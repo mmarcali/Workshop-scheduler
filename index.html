@@ -1,4 +1,4 @@
-       <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -160,6 +160,94 @@
                 return { config: { description: '', timeSlots: [] }, participants: {} };
             }
         };
+
+        // Debug tools - available globally for troubleshooting
+        window.debugWorkshopScheduler = {
+            testConnection: async () => {
+                console.log('=== TESTING CONNECTION TO APPS SCRIPT ===');
+                console.log('URL:', GOOGLE_SCRIPT_URL);
+                
+                try {
+                    // Test GET request
+                    console.log('1. Testing GET request...');
+                    const getResponse = await fetch(GOOGLE_SCRIPT_URL);
+                    console.log('GET Response status:', getResponse.status);
+                    console.log('GET Response ok:', getResponse.ok);
+                    
+                    if (getResponse.ok) {
+                        const getData = await getResponse.json();
+                        console.log('✅ GET Success:', getData);
+                    } else {
+                        const getError = await getResponse.text();
+                        console.log('❌ GET Error:', getError);
+                    }
+                    
+                    // Test POST request
+                    console.log('2. Testing POST request...');
+                    const testData = {
+                        type: 'config',
+                        description: 'Test Workshop Debug',
+                        timeSlots: [{
+                            id: 999999,
+                            dateFrom: '2024-01-15',
+                            dateTo: '2024-01-15',
+                            description: 'Test Workshop Debug'
+                        }]
+                    };
+                    
+                    const postResponse = await fetch(GOOGLE_SCRIPT_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(testData)
+                    });
+                    
+                    console.log('POST Response status:', postResponse.status);
+                    console.log('POST Response ok:', postResponse.ok);
+                    
+                    if (postResponse.ok) {
+                        const postData = await postResponse.json();
+                        console.log('✅ POST Success:', postData);
+                        console.log('✅ Connection test PASSED! Your Apps Script is working.');
+                    } else {
+                        const postError = await postResponse.text();
+                        console.log('❌ POST Error:', postError);
+                    }
+                    
+                } catch (error) {
+                    console.error('❌ Connection test FAILED:', error);
+                    console.log('This usually means:');
+                    console.log('1. Apps Script URL is wrong');
+                    console.log('2. Apps Script deployment has wrong permissions');
+                    console.log('3. Network/CORS issue');
+                }
+                
+                console.log('=== CONNECTION TEST COMPLETE ===');
+            },
+            
+            checkConfig: () => {
+                console.log('=== CURRENT CONFIGURATION ===');
+                console.log('Apps Script URL:', GOOGLE_SCRIPT_URL);
+                console.log('Google Sheet URL: https://docs.google.com/spreadsheets/d/1qRAhPCd39aHXP6Ju25_JQNHWP9QBPyn8zB80x2GDk40/edit');
+                return {
+                    scriptUrl: GOOGLE_SCRIPT_URL,
+                    sheetUrl: 'https://docs.google.com/spreadsheets/d/1qRAhPCd39aHXP6Ju25_JQNHWP9QBPyn8zB80x2GDk40/edit'
+                };
+            },
+
+            testDirectAccess: () => {
+                console.log('Opening Apps Script URL in new tab...');
+                window.open(GOOGLE_SCRIPT_URL, '_blank');
+                console.log('You should see JSON data like: {"config":{"description":"","timeSlots":[]},"participants":{}}');
+                console.log('If you see an error page instead, there\'s a problem with your Apps Script deployment.');
+            }
+        };
+
+        console.log('🔧 Debug tools loaded! Available commands:');
+        console.log('• debugWorkshopScheduler.testConnection() - Test connection to Google Sheets');
+        console.log('• debugWorkshopScheduler.checkConfig() - Show current configuration');
+        console.log('• debugWorkshopScheduler.testDirectAccess() - Open Apps Script URL directly');
 
         const WorkshopScheduler = () => {
             const [currentView, setCurrentView] = useState('admin');
@@ -508,8 +596,8 @@
                             
                             <div className="mt-3 p-3 bg-yellow-100 border border-yellow-300 rounded-lg">
                                 <p className="text-sm text-yellow-800">
-                                    <strong>🔧 Troubleshooting:</strong> If you get "Error saving time slot", open browser console (F12) and run: 
-                                    <code className="bg-yellow-200 px-1 rounded ml-1">debugWorkshopScheduler.testConnection()</code>
+                                    <strong>🔧 Debug Tools:</strong> If you get errors, open browser console (F12) and run:<br/>
+                                    <code className="bg-yellow-200 px-1 rounded">debugWorkshopScheduler.testConnection()</code>
                                 </p>
                             </div>
                         </div>
