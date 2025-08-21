@@ -14,6 +14,24 @@
         .icon-xl { width: 2rem; height: 2rem; }
         .icon-2xl { width: 4rem; height: 4rem; }
         .icon-3xl { width: 5rem; height: 5rem; }
+        
+        .calendar-cell {
+            min-height: 3rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .calendar-cell:hover {
+            transform: scale(1.02);
+        }
+        
+        .date-in-range {
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+        }
+        
+        .date-selected-by-participants {
+            background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+        }
     </style>
 </head>
 <body>
@@ -22,7 +40,7 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // Google Apps Script Configuration - UPDATED WITH NEW DEPLOYMENT URL
+        // Google Apps Script Configuration
         const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxVUTZA03Ct-MPVtf2BN-j7KC86xc295YXVSAgtDETXropngEQBCBbXDeDTB4uXDUFa9w/exec';
 
         // Icon components
@@ -35,10 +53,15 @@
             </svg>
         );
 
-        const Clock = ({ className = "icon" }) => (
+        const ChevronLeft = ({ className = "icon" }) => (
             <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polyline points="12,6 12,12 16,14"></polyline>
+                <polyline points="15,18 9,12 15,6"></polyline>
+            </svg>
+        );
+
+        const ChevronRight = ({ className = "icon" }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <polyline points="9,18 15,12 9,6"></polyline>
             </svg>
         );
 
@@ -103,13 +126,10 @@
             </svg>
         );
 
-        // Google Sheets API functions - CORS-friendly version
+        // Google Sheets API functions
         const saveToSheets = async (data) => {
             try {
                 console.log('Attempting to save to Google Sheets:', data);
-                console.log('Using URL:', GOOGLE_SCRIPT_URL);
-                
-                // Use form data instead of JSON to avoid CORS preflight
                 const formData = new FormData();
                 formData.append('data', JSON.stringify(data));
                 
@@ -118,12 +138,8 @@
                     body: formData
                 });
 
-                console.log('Response status:', response.status);
-                console.log('Response ok:', response.ok);
-
                 if (!response.ok) {
                     const errorText = await response.text();
-                    console.error('Response error text:', errorText);
                     throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
                 }
 
@@ -140,15 +156,10 @@
         const loadFromSheets = async () => {
             try {
                 console.log('Loading data from Google Sheets...');
-                console.log('Using URL:', GOOGLE_SCRIPT_URL);
-                
                 const response = await fetch(GOOGLE_SCRIPT_URL);
-                console.log('Load response status:', response.status);
-                console.log('Load response ok:', response.ok);
                 
                 if (!response.ok) {
                     const errorText = await response.text();
-                    console.error('Load response error text:', errorText);
                     throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
                 }
                 
@@ -158,154 +169,213 @@
             } catch (error) {
                 console.error('Error loading from Google Sheets:', error);
                 alert(`Error loading data: ${error.message}. Using local data only.`);
-                return { config: { description: '', timeSlots: [] }, participants: {} };
+                return { config: { description: '', dateRanges: [] }, participants: {} };
             }
         };
 
-        // Debug tools - available globally for troubleshooting
-        window.debugWorkshopScheduler = {
-            testConnection: async () => {
-                console.log('=== TESTING CONNECTION TO APPS SCRIPT ===');
-                console.log('URL:', GOOGLE_SCRIPT_URL);
-                
-                try {
-                    // Test GET request
-                    console.log('1. Testing GET request...');
-                    const getResponse = await fetch(GOOGLE_SCRIPT_URL);
-                    console.log('GET Response status:', getResponse.status);
-                    console.log('GET Response ok:', getResponse.ok);
-                    
-                    if (getResponse.ok) {
-                        const getData = await getResponse.json();
-                        console.log('✅ GET Success:', getData);
-                    } else {
-                        const getError = await getResponse.text();
-                        console.log('❌ GET Error:', getError);
-                    }
-                    
-                    // Test POST request with form data (CORS-friendly)
-                    console.log('2. Testing POST request (CORS-friendly)...');
-                    const testData = {
-                        type: 'config',
-                        description: 'Test Workshop Debug',
-                        timeSlots: [{
-                            id: 999999,
-                            dateFrom: '2024-01-15',
-                            dateTo: '2024-01-15',
-                            description: 'Test Workshop Debug'
-                        }]
-                    };
-                    
-                    const formData = new FormData();
-                    formData.append('data', JSON.stringify(testData));
-                    
-                    const postResponse = await fetch(GOOGLE_SCRIPT_URL, {
-                        method: 'POST',
-                        body: formData
-                    });
-                    
-                    console.log('POST Response status:', postResponse.status);
-                    console.log('POST Response ok:', postResponse.ok);
-                    
-                    if (postResponse.ok) {
-                        const postData = await postResponse.json();
-                        console.log('✅ POST Success:', postData);
-                        console.log('✅ Connection test PASSED! Your Apps Script is working.');
-                    } else {
-                        const postError = await postResponse.text();
-                        console.log('❌ POST Error:', postError);
-                    }
-                    
-                } catch (error) {
-                    console.error('❌ Connection test FAILED:', error);
-                    console.log('This usually means:');
-                    console.log('1. Apps Script URL is wrong');
-                    console.log('2. Apps Script deployment has wrong permissions');
-                    console.log('3. Network/CORS issue');
-                }
-                
-                console.log('=== CONNECTION TEST COMPLETE ===');
-            },
+        // Calendar helper functions
+        const formatDateKey = (date) => {
+            return date.toISOString().split('T')[0];
+        };
+
+        const formatDateDisplay = (date) => {
+            const options = { month: 'short', day: 'numeric', weekday: 'short' };
+            return date.toLocaleDateString('en-US', options);
+        };
+
+        const generateCalendarWeeks = (year, month) => {
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const startDate = new Date(firstDay);
+            const endDate = new Date(lastDay);
             
-            checkConfig: () => {
-                console.log('=== CURRENT CONFIGURATION ===');
-                console.log('Apps Script URL:', GOOGLE_SCRIPT_URL);
-                console.log('Google Sheet URL: https://docs.google.com/spreadsheets/d/1qRAhPCd39aHXP6Ju25_JQNHWP9QBPyn8zB80x2GDk40/edit');
-                return {
-                    scriptUrl: GOOGLE_SCRIPT_URL,
-                    sheetUrl: 'https://docs.google.com/spreadsheets/d/1qRAhPCd39aHXP6Ju25_JQNHWP9QBPyn8zB80x2GDk40/edit'
-                };
-            },
-
-            testDirectAccess: () => {
-                console.log('Opening Apps Script URL in new tab...');
-                window.open(GOOGLE_SCRIPT_URL, '_blank');
-                console.log('You should see JSON data like: {"config":{"description":"","timeSlots":[]},"participants":{}}');
-                console.log('If you see an error page instead, there\'s a problem with your Apps Script deployment.');
-            },
-
-            testParticipantSave: async () => {
-                console.log('=== TESTING PARTICIPANT SAVE ===');
-                
-                const testParticipantData = {
-                    type: 'participant',
-                    name: 'Test User Debug',
-                    selectedSlots: [123456789, 987654321]
-                };
-                
-                console.log('Test participant data:', testParticipantData);
-                
-                try {
-                    const result = await saveToSheets(testParticipantData);
-                    console.log('✅ Participant save test PASSED:', result);
-                    console.log('Check your Google Sheet "Responses" tab for the test entry.');
-                } catch (error) {
-                    console.error('❌ Participant save test FAILED:', error);
-                    console.log('This is likely the same error your participants are seeing.');
+            // Adjust start to beginning of week (Sunday)
+            startDate.setDate(startDate.getDate() - startDate.getDay());
+            
+            // Adjust end to end of week (Saturday)
+            endDate.setDate(endDate.getDate() + (6 - endDate.getDay()));
+            
+            const weeks = [];
+            const currentDate = new Date(startDate);
+            
+            while (currentDate <= endDate) {
+                const week = [];
+                for (let i = 0; i < 7; i++) {
+                    week.push(new Date(currentDate));
+                    currentDate.setDate(currentDate.getDate() + 1);
                 }
+                weeks.push(week);
             }
+            
+            return weeks;
         };
 
-        console.log('🔧 Debug tools loaded! Available commands:');
-        console.log('• debugWorkshopScheduler.testConnection() - Test connection to Google Sheets');
-        console.log('• debugWorkshopScheduler.checkConfig() - Show current configuration');
-        console.log('• debugWorkshopScheduler.testDirectAccess() - Open Apps Script URL directly');
-        console.log('• debugWorkshopScheduler.testParticipantSave() - Test participant data saving');
+        const isDateInRange = (date, ranges) => {
+            const dateStr = formatDateKey(date);
+            return ranges.some(range => {
+                const startStr = range.startDate;
+                const endStr = range.endDate;
+                return dateStr >= startStr && dateStr <= endStr;
+            });
+        };
+
+        const isDateInCurrentMonth = (date, displayMonth) => {
+            return date.getMonth() === displayMonth.getMonth() && 
+                   date.getFullYear() === displayMonth.getFullYear();
+        };
+
+        // Calendar Component
+        const CalendarComponent = ({ 
+            dateRanges, 
+            onDateClick, 
+            isAdmin, 
+            participants,
+            selectionStart,
+            highlightedRange
+        }) => {
+            const [displayMonth, setDisplayMonth] = useState(new Date());
+            
+            const weeks = generateCalendarWeeks(displayMonth.getFullYear(), displayMonth.getMonth());
+            
+            const navigateMonth = (direction) => {
+                const newMonth = new Date(displayMonth);
+                newMonth.setMonth(newMonth.getMonth() + direction);
+                setDisplayMonth(newMonth);
+            };
+
+            const getDateParticipantCount = (date) => {
+                const dateKey = formatDateKey(date);
+                return Object.values(participants).filter(availability => 
+                    availability.includes(dateKey)
+                ).length;
+            };
+
+            const getDayClasses = (date) => {
+                const isCurrentMonth = isDateInCurrentMonth(date, displayMonth);
+                const isInRange = isDateInRange(date, dateRanges);
+                const isSelectionStart = selectionStart && formatDateKey(date) === formatDateKey(selectionStart);
+                const isInHighlightedRange = highlightedRange && 
+                    formatDateKey(date) >= formatDateKey(highlightedRange.start) && 
+                    formatDateKey(date) <= formatDateKey(highlightedRange.end);
+                const participantCount = getDateParticipantCount(date);
+                const hasParticipants = participantCount > 0;
+
+                let classes = 'calendar-cell border border-gray-200 p-2 text-center ';
+                
+                if (!isCurrentMonth) {
+                    classes += 'text-gray-300 ';
+                }
+                
+                if (isAdmin) {
+                    if (isInRange) {
+                        if (hasParticipants) {
+                            classes += 'date-selected-by-participants border-green-400 ';
+                        } else {
+                            classes += 'date-in-range border-blue-400 ';
+                        }
+                    }
+                    
+                    if (isSelectionStart) {
+                        classes += 'bg-blue-500 text-white ';
+                    }
+                    
+                    if (isInHighlightedRange && !isSelectionStart) {
+                        classes += 'bg-blue-200 ';
+                    }
+                } else {
+                    // Participant view
+                    if (isInRange) {
+                        const isSelected = Object.values(participants).some(availability => 
+                            availability.includes(formatDateKey(date))
+                        );
+                        
+                        if (isSelected) {
+                            classes += 'bg-green-100 border-green-400 ';
+                        } else {
+                            classes += 'bg-blue-50 border-blue-300 hover:bg-blue-100 ';
+                        }
+                    } else {
+                        classes += 'cursor-not-allowed opacity-50 ';
+                    }
+                }
+                
+                return classes;
+            };
+
+            return (
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-4">
+                        <button
+                            onClick={() => navigateMonth(-1)}
+                            className="p-2 hover:bg-gray-100 rounded"
+                        >
+                            <ChevronLeft className="icon" />
+                        </button>
+                        
+                        <h3 className="text-lg font-semibold">
+                            {displayMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                        </h3>
+                        
+                        <button
+                            onClick={() => navigateMonth(1)}
+                            className="p-2 hover:bg-gray-100 rounded"
+                        >
+                            <ChevronRight className="icon" />
+                        </button>
+                    </div>
+                    
+                    <div className="grid grid-cols-7 gap-1">
+                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                            <div key={day} className="p-2 text-center font-medium text-gray-600 text-sm">
+                                {day}
+                            </div>
+                        ))}
+                        
+                        {weeks.flat().map((date, index) => {
+                            const participantCount = getDateParticipantCount(date);
+                            
+                            return (
+                                <div
+                                    key={index}
+                                    className={getDayClasses(date)}
+                                    onClick={() => onDateClick(date)}
+                                >
+                                    <div className="text-sm font-medium">
+                                        {formatDateDisplay(date)}
+                                    </div>
+                                    {isAdmin && participantCount > 0 && (
+                                        <div className="text-xs text-green-600 font-medium mt-1">
+                                            {participantCount} vote{participantCount !== 1 ? 's' : ''}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        };
 
         const WorkshopScheduler = () => {
             const [currentView, setCurrentView] = useState('admin');
             const [participantName, setParticipantName] = useState('');
-            const [timeSlots, setTimeSlots] = useState([]);
+            const [dateRanges, setDateRanges] = useState([]);
             const [participants, setParticipants] = useState({});
             const [workshopDescription, setWorkshopDescription] = useState('');
-            const [newSlot, setNewSlot] = useState({
-                startDate: '',
-                endDate: ''
-            });
-            const [showDatePicker, setShowDatePicker] = useState(false);
+            const [selectionStart, setSelectionStart] = useState(null);
+            const [highlightedRange, setHighlightedRange] = useState(null);
             const [saving, setSaving] = useState(false);
             const [loading, setLoading] = useState(true);
-            const [resultsData, setResultsData] = useState({ timeSlots: [], participants: {} });
-            const [loadingResults, setLoadingResults] = useState(false);
 
             // Load data on component mount
             useEffect(() => {
                 const loadData = async () => {
                     setLoading(true);
                     try {
-                        console.log('=== WORKSHOP SCHEDULER STARTUP ===');
-                        console.log('Apps Script URL:', GOOGLE_SCRIPT_URL);
-                        console.log('Google Sheet URL: https://docs.google.com/spreadsheets/d/1qRAhPCd39aHXP6Ju25_JQNHWP9QBPyn8zB80x2GDk40/edit');
-                        
                         const data = await loadFromSheets();
                         setWorkshopDescription(data.config.description || '');
-                        setTimeSlots(data.config.timeSlots || []);
+                        setDateRanges(data.config.dateRanges || []);
                         setParticipants(data.participants || {});
-                        
-                        console.log('Loaded workshop description:', data.config.description);
-                        console.log('Loaded time slots:', data.config.timeSlots?.length || 0);
-                        console.log('Loaded participants:', Object.keys(data.participants || {}).length);
-                        console.log('=== STARTUP COMPLETE ===');
                     } catch (error) {
                         console.error('Failed to load data:', error);
                     } finally {
@@ -355,126 +425,53 @@
                 const config = {
                     type: 'config',
                     description: workshopDescription,
-                    timeSlots: timeSlots
+                    dateRanges: dateRanges
                 };
-                
-                console.log('Saving workshop config:', config);
-                console.log('Number of time slots:', timeSlots.length);
                 
                 await saveToSheets(config);
             };
 
-            const confirmAvailability = async () => {
-                if (participantName && participants[participantName]?.length > 0) {
-                    setSaving(true);
-                    
-                    // Small delay to ensure React state has updated
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    
-                    try {
-                        console.log('=== SAVING PARTICIPANT RESPONSE ===');
-                        console.log('Participant name:', participantName);
-                        console.log('Selected slots:', participants[participantName]);
-                        console.log('Selected slots length:', participants[participantName].length);
-                        
-                        const participantData = {
-                            type: 'participant',
-                            name: participantName,
-                            selectedSlots: participants[participantName]
-                        };
-                        
-                        console.log('Data to save:', participantData);
-                        
-                        await saveToSheets(participantData);
-                        
-                        console.log('✅ Participant response saved successfully');
-                        
-                        // Load fresh results data before switching to thank you page
-                        setLoadingResults(true);
-                        try {
-                            const data = await loadFromSheets();
-                            setResultsData({
-                                timeSlots: data.config.timeSlots || [],
-                                participants: data.participants || {}
-                            });
-                            console.log('✅ Results data loaded for thank you page');
-                        } catch (error) {
-                            console.error('Error loading results for thank you page:', error);
-                        } finally {
-                            setLoadingResults(false);
-                        }
-                        
-                        switchToView('thank-you');
-                    } catch (error) {
-                        console.error('❌ Save error details:', error);
-                        alert(`Error saving your response: ${error.message}\n\nPlease check the browser console for details and try again.`);
-                    } finally {
-                        setSaving(false);
-                    }
+            const handleAdminDateClick = (date) => {
+                if (!selectionStart) {
+                    // First click - set start date
+                    setSelectionStart(date);
+                    setHighlightedRange({ start: date, end: date });
                 } else {
-                    console.log('❌ Cannot save - missing data:');
-                    console.log('Participant name:', participantName);
-                    console.log('Selected slots:', participants[participantName]);
-                    alert('Please enter your name and select at least one time slot before confirming.');
-                }
-            };
-
-            const addTimeSlot = async () => {
-                if (newSlot.startDate && newSlot.endDate && workshopDescription) {
-                    const slot = {
+                    // Second click - complete range selection
+                    const startDate = new Date(Math.min(selectionStart, date));
+                    const endDate = new Date(Math.max(selectionStart, date));
+                    
+                    const newRange = {
                         id: Date.now(),
-                        dateFrom: newSlot.startDate,
-                        dateTo: newSlot.endDate,
-                        description: workshopDescription,
-                        dateFromObj: new Date(newSlot.startDate),
-                        dateToObj: new Date(newSlot.endDate)
+                        startDate: formatDateKey(startDate),
+                        endDate: formatDateKey(endDate),
+                        description: workshopDescription
                     };
-                    const updatedSlots = [...timeSlots, slot];
-                    setTimeSlots(updatedSlots);
-                    setNewSlot({ startDate: '', endDate: '' });
+                    
+                    setDateRanges([...dateRanges, newRange]);
+                    setSelectionStart(null);
+                    setHighlightedRange(null);
                     
                     // Save to Google Sheets
-                    try {
-                        console.log('Saving workshop config...');
-                        await saveWorkshopConfig();
-                        console.log('Workshop config saved successfully');
-                    } catch (error) {
-                        console.error('Error saving workshop config:', error);
-                        alert('Error saving time slot: ' + error.message + '\n\nPlease check:\n1. Your Google Apps Script URL is correct\n2. The script is deployed properly\n3. Check browser console for details');
-                        // Remove the slot from local state since save failed
-                        setTimeSlots(timeSlots);
-                    }
+                    saveWorkshopConfig();
                 }
             };
 
-            const removeTimeSlot = async (id) => {
-                const updatedSlots = timeSlots.filter(slot => slot.id !== id);
-                setTimeSlots(updatedSlots);
-                
-                const updatedParticipants = {};
-                Object.keys(participants).forEach(name => {
-                    updatedParticipants[name] = participants[name].filter(slotId => slotId !== id);
-                });
-                setParticipants(updatedParticipants);
-                
-                // Save to Google Sheets
-                try {
-                    await saveWorkshopConfig();
-                } catch (error) {
-                    console.error('Error saving workshop config:', error);
-                }
-            };
-
-            const toggleAvailability = (slotId) => {
+            const handleParticipantDateClick = (date) => {
                 if (!participantName) return;
+                
+                const dateKey = formatDateKey(date);
+                const isInAdminRange = isDateInRange(date, dateRanges);
+                
+                if (!isInAdminRange) return;
                 
                 const currentAvailability = participants[participantName] || [];
                 let updatedAvailability;
                 
-                if (currentAvailability.includes(slotId)) {
-                    updatedAvailability = currentAvailability.filter(id => id !== slotId);
+                if (currentAvailability.includes(dateKey)) {
+                    updatedAvailability = currentAvailability.filter(d => d !== dateKey);
                 } else {
-                    updatedAvailability = [...currentAvailability, slotId];
+                    updatedAvailability = [...currentAvailability, dateKey];
                 }
                 
                 setParticipants({
@@ -483,50 +480,84 @@
                 });
             };
 
-            const getSlotParticipantCount = (slotId) => {
-                return Object.values(participants).filter(availability => 
-                    availability.includes(slotId)
-                ).length;
+            const removeRange = async (rangeId) => {
+                const updatedRanges = dateRanges.filter(range => range.id !== rangeId);
+                setDateRanges(updatedRanges);
+                
+                // Remove participant selections for dates in this range
+                const rangeToRemove = dateRanges.find(range => range.id === rangeId);
+                if (rangeToRemove) {
+                    const updatedParticipants = {};
+                    Object.keys(participants).forEach(name => {
+                        updatedParticipants[name] = participants[name].filter(dateKey => {
+                            return !(dateKey >= rangeToRemove.startDate && dateKey <= rangeToRemove.endDate);
+                        });
+                    });
+                    setParticipants(updatedParticipants);
+                }
+                
+                await saveWorkshopConfig();
             };
 
-            const getSlotParticipants = (slotId) => {
-                return Object.keys(participants).filter(name => 
-                    participants[name].includes(slotId)
-                );
-            };
-
-            const sortedSlotsByPopularity = [...timeSlots].sort((a, b) => {
-                const countA = getSlotParticipantCount(a.id);
-                const countB = getSlotParticipantCount(b.id);
-                if (countA !== countB) return countB - countA;
-                return a.dateFromObj - b.dateFromObj;
-            });
-
-            const formatDateRange = (dateFrom, dateTo) => {
-                const startDate = new Date(dateFrom);
-                const endDate = new Date(dateTo);
-                
-                const formatOptions = { 
-                    weekday: 'long', 
-                    year: 'numeric', 
-                    month: 'long', 
-                    day: 'numeric' 
-                };
-                
-                if (dateFrom === dateTo) {
-                    return startDate.toLocaleDateString('en-US', formatOptions);
+            const confirmAvailability = async () => {
+                if (participantName && participants[participantName]?.length > 0) {
+                    setSaving(true);
+                    
+                    try {
+                        const participantData = {
+                            type: 'participant',
+                            name: participantName,
+                            selectedDates: participants[participantName]
+                        };
+                        
+                        await saveToSheets(participantData);
+                        switchToView('thank-you');
+                    } catch (error) {
+                        console.error('Save error:', error);
+                        alert(`Error saving your response: ${error.message}`);
+                    } finally {
+                        setSaving(false);
+                    }
                 } else {
-                    return `${startDate.toLocaleDateString('en-US', formatOptions)} - ${endDate.toLocaleDateString('en-US', formatOptions)}`;
+                    alert('Please enter your name and select at least one date before confirming.');
                 }
             };
 
-            const formatDateRangeDisplay = () => {
-                if (!newSlot.startDate) return 'Select date range';
+            // Helper functions for results
+            const getDateParticipantCount = (dateKey) => {
+                return Object.values(participants).filter(availability => 
+                    availability.includes(dateKey)
+                ).length;
+            };
+
+            const getAllSelectedDates = () => {
+                const allDates = new Set();
+                dateRanges.forEach(range => {
+                    const start = new Date(range.startDate);
+                    const end = new Date(range.endDate);
+                    
+                    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                        allDates.add(formatDateKey(d));
+                    }
+                });
                 
-                const startDate = new Date(newSlot.startDate);
-                const endDate = new Date(newSlot.endDate);
+                return Array.from(allDates).sort().map(dateKey => ({
+                    dateKey,
+                    count: getDateParticipantCount(dateKey),
+                    displayDate: new Date(dateKey).toLocaleDateString('en-US', { 
+                        weekday: 'long', 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric' 
+                    })
+                }));
+            };
+
+            const formatRangeDisplay = (range) => {
+                const startDate = new Date(range.startDate);
+                const endDate = new Date(range.endDate);
                 
-                if (newSlot.startDate === newSlot.endDate) {
+                if (range.startDate === range.endDate) {
                     return startDate.toLocaleDateString('en-US', { 
                         weekday: 'long', 
                         year: 'numeric', 
@@ -545,22 +576,9 @@
                 }
             };
 
-            const handleDateRangeSelect = () => {
-                setShowDatePicker(false);
-            };
-
-            const openGoogleSheet = () => {
-                // Your Google Sheet URL
-                const spreadsheetUrl = 'https://docs.google.com/spreadsheets/d/1qRAhPCd39aHXP6Ju25_JQNHWP9QBPyn8zB80x2GDk40/edit?gid=343624849#gid=343624849';
-                window.open(spreadsheetUrl, '_blank');
-            };
-
-            const totalParticipants = Object.keys(participants).length;
-            const maxAvailability = Math.max(...timeSlots.map(slot => getSlotParticipantCount(slot.id)), 0);
-
             if (loading) {
                 return (
-                    <div className="max-w-4xl mx-auto p-6 bg-white min-h-screen flex items-center justify-center">
+                    <div className="max-w-6xl mx-auto p-6 bg-white min-h-screen flex items-center justify-center">
                         <div className="text-center">
                             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
                             <p className="text-gray-600">Loading workshop data from Google Sheets...</p>
@@ -570,137 +588,13 @@
             }
 
             if (currentView === 'thank-you') {
-                const getResultsSlotParticipantCount = (slotId) => {
-                    return Object.values(resultsData.participants).filter(availability => 
-                        availability.includes(slotId)
-                    ).length;
-                };
-
-                const sortedResultsByPopularity = [...resultsData.timeSlots].sort((a, b) => {
-                    const countA = getResultsSlotParticipantCount(a.id);
-                    const countB = getResultsSlotParticipantCount(b.id);
-                    if (countA !== countB) return countB - countA;
-                    return a.dateFromObj - b.dateFromObj;
-                });
-
-                const totalResultsParticipants = Object.keys(resultsData.participants).length;
-                const maxResultsAvailability = Math.max(...resultsData.timeSlots.map(slot => getResultsSlotParticipantCount(slot.id)), 0);
-
                 return (
                     <div className="max-w-4xl mx-auto p-6 bg-white min-h-screen">
                         <div className="text-center mb-8">
-                            <div className="mb-6">
-                                <CheckCircle className="icon-3xl text-green-600 mx-auto mb-4" />
-                                <h1 className="text-4xl font-bold text-gray-900 mb-2">Thank You for Your Vote!</h1>
-                                <p className="text-xl text-gray-600 mb-6">Your availability has been successfully saved to Google Sheets.</p>
-                            </div>
-                            
-                            <div className="bg-green-50 border border-green-200 rounded-lg p-6 mb-6 max-w-md mx-auto">
-                                <h3 className="font-semibold text-green-800 mb-2">What's Next?</h3>
-                                <p className="text-green-700 text-sm">
-                                    The workshop organizer will review all responses and announce the final dates soon. 
-                                    Check out the current results below!
-                                </p>
-                            </div>
+                            <CheckCircle className="icon-3xl text-green-600 mx-auto mb-4" />
+                            <h1 className="text-4xl font-bold text-gray-900 mb-2">Thank You!</h1>
+                            <p className="text-xl text-gray-600 mb-6">Your availability has been saved successfully.</p>
                         </div>
-
-                        {loadingResults ? (
-                            <div className="text-center">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                                <p className="text-gray-600">Loading current results...</p>
-                            </div>
-                        ) : resultsData.timeSlots.length > 0 && totalResultsParticipants > 0 ? (
-                            <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <Users className="icon-2xl text-blue-600" />
-                                    <h3 className="text-xl font-semibold">Current Results</h3>
-                                    <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm font-medium">
-                                        {totalResultsParticipants} vote{totalResultsParticipants !== 1 ? 's' : ''} so far
-                                    </span>
-                                </div>
-                                
-                                <div className="space-y-4">
-                                    {sortedResultsByPopularity.map((slot, index) => {
-                                        const count = getResultsSlotParticipantCount(slot.id);
-                                        const percentage = totalResultsParticipants > 0 ? (count / totalResultsParticipants) * 100 : 0;
-                                        const formattedDate = formatDateRange(slot.dateFrom, slot.dateTo);
-                                        const isWinner = count === maxResultsAvailability && count > 0;
-                                        const rank = index + 1;
-                                        
-                                        return (
-                                            <div key={slot.id} className={`p-4 rounded-lg border-2 ${isWinner ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'}`}>
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white ${
-                                                            rank === 1 ? 'bg-yellow-500' : 
-                                                            rank === 2 ? 'bg-gray-400' : 
-                                                            rank === 3 ? 'bg-orange-400' : 'bg-gray-300'
-                                                        }`}>
-                                                            {rank}
-                                                        </div>
-                                                        {isWinner && <CheckCircle className="icon-lg text-green-600" />}
-                                                        <div>
-                                                            <div className={`font-semibold text-lg ${isWinner ? 'text-green-700' : 'text-gray-900'}`}>
-                                                                {slot.description}
-                                                            </div>
-                                                            <div className="text-gray-600">{formattedDate}</div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <div className={`text-2xl font-bold ${isWinner ? 'text-green-600' : 'text-gray-900'}`}>
-                                                            {count}/{totalResultsParticipants}
-                                                        </div>
-                                                        <div className="text-sm text-gray-500">{Math.round(percentage)}% available</div>
-                                                    </div>
-                                                </div>
-                                                
-                                                <div className="w-full bg-gray-200 rounded-full h-3">
-                                                    <div 
-                                                        className={`h-3 rounded-full ${
-                                                            rank === 1 ? 'bg-yellow-500' : 
-                                                            rank === 2 ? 'bg-gray-400' : 
-                                                            rank === 3 ? 'bg-orange-400' : 'bg-gray-300'
-                                                        } ${isWinner ? 'bg-green-500' : ''}`}
-                                                        style={{ width: `${percentage}%` }}
-                                                    ></div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-
-                                {maxResultsAvailability > 0 && (
-                                    <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-                                        <h4 className="font-semibold text-green-800 mb-2">
-                                            🏆 Current Winner{sortedResultsByPopularity.filter(slot => getResultsSlotParticipantCount(slot.id) === maxResultsAvailability).length > 1 ? 's' : ''}:
-                                        </h4>
-                                        <div className="space-y-1">
-                                            {sortedResultsByPopularity
-                                                .filter(slot => getResultsSlotParticipantCount(slot.id) === maxResultsAvailability)
-                                                .map(slot => {
-                                                    const formattedDate = formatDateRange(slot.dateFrom, slot.dateTo);
-                                                    return (
-                                                        <div key={slot.id} className="text-green-700 font-medium">
-                                                            {slot.description} - {formattedDate}
-                                                        </div>
-                                                    );
-                                                })}
-                                        </div>
-                                    </div>
-                                )}
-
-                                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                    <p className="text-sm text-blue-700">
-                                        <strong>Note:</strong> Results update in real-time as more team members vote. 
-                                        The final decision will be announced once everyone has responded.
-                                    </p>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="text-center py-8 bg-gray-50 rounded-lg">
-                                <p className="text-gray-600">No results to display yet. More votes needed!</p>
-                            </div>
-                        )}
 
                         <div className="text-center space-y-3">
                             <button
@@ -722,21 +616,17 @@
             }
 
             if (currentView === 'admin') {
+                const totalParticipants = Object.keys(participants).length;
+                const sortedDates = getAllSelectedDates().sort((a, b) => b.count - a.count);
+
                 return (
-                    <div className="max-w-4xl mx-auto p-6 bg-white">
+                    <div className="max-w-6xl mx-auto p-6 bg-white">
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center gap-3">
                                 <Calendar className="icon-xl text-blue-600" />
                                 <h1 className="text-3xl font-bold text-gray-900">Workshop Scheduler</h1>
-                                <span className="bg-green-100 text-green-600 px-2 py-1 rounded text-sm">Google Sheets</span>
                             </div>
                             <div className="flex gap-2">
-                                <button
-                                    onClick={openGoogleSheet}
-                                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                                >
-                                    📊 Open Google Sheet
-                                </button>
                                 <button
                                     onClick={copyParticipantLink}
                                     className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
@@ -754,232 +644,113 @@
                             </div>
                         </div>
 
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-                            <div className="flex items-center gap-2 mb-2">
-                                <Settings className="icon-lg text-green-600" />
-                                <h2 className="text-lg font-semibold text-green-900">Admin Panel</h2>
-                                <Save className="icon text-green-600" />
-                            </div>
-                            <p className="text-green-700">All data is automatically saved to your Google Sheet. Participant responses appear in real-time in the "Responses" tab.</p>
-                            
-                            <div className="mt-3 p-3 bg-green-100 rounded-lg">
-                                <p className="text-sm text-green-800">
-                                    <strong>Share with participants:</strong> Send them the participant link using the "Copy Participant Link" button above.
-                                </p>
-                            </div>
-                            
-                            <div className="mt-3 p-3 bg-yellow-100 border border-yellow-300 rounded-lg">
-                                <p className="text-sm text-yellow-800">
-                                    <strong>🔧 Debug Tools:</strong> If you get errors, open browser console (F12) and run:<br/>
-                                    <code className="bg-yellow-200 px-1 rounded">debugWorkshopScheduler.testConnection()</code><br/>
-                                    <code className="bg-yellow-200 px-1 rounded">debugWorkshopScheduler.testParticipantSave()</code>
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-                            <h3 className="text-lg font-semibold mb-4">Workshop Details</h3>
-                            <div className="mb-4">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Workshop Description</label>
-                                <input
-                                    type="text"
-                                    placeholder="e.g., Sprint Planning Workshop"
-                                    value={workshopDescription}
-                                    onChange={(e) => setWorkshopDescription(e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                />
-                                <p className="text-sm text-gray-500 mt-1">All time slots will be added under this workshop description.</p>
-                            </div>
-                            
-                            <h4 className="text-md font-medium mb-3">Add Time Slots</h4>
-                            <div className="space-y-4">
-                                <div className="relative">
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Date Range</label>
-                                    <div 
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 cursor-pointer bg-white flex items-center justify-between"
-                                        onClick={() => setShowDatePicker(!showDatePicker)}
-                                    >
-                                        <span className={`${!newSlot.startDate ? 'text-gray-500' : 'text-gray-900'}`}>
-                                            {formatDateRangeDisplay()}
-                                        </span>
-                                        <Calendar className="icon-lg text-gray-400" />
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Left Column - Calendar and Configuration */}
+                            <div className="space-y-6">
+                                <div className="bg-white border border-gray-200 rounded-lg p-6">
+                                    <h3 className="text-lg font-semibold mb-4">Workshop Configuration</h3>
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Workshop Description</label>
+                                        <input
+                                            type="text"
+                                            placeholder="e.g., Sprint Planning Workshop"
+                                            value={workshopDescription}
+                                            onChange={(e) => setWorkshopDescription(e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        />
                                     </div>
                                     
-                                    {showDatePicker && (
-                                        <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-10 p-4 min-w-full">
-                                            <div className="space-y-3">
-                                                <div>
-                                                    <label className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
-                                                    <input
-                                                        type="date"
-                                                        value={newSlot.startDate}
-                                                        onChange={(e) => setNewSlot({...newSlot, startDate: e.target.value, endDate: e.target.value})}
-                                                        className="w-full px-2 py-1 border border-gray-200 rounded text-sm"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-medium text-gray-600 mb-1">End Date</label>
-                                                    <input
-                                                        type="date"
-                                                        value={newSlot.endDate}
-                                                        onChange={(e) => setNewSlot({...newSlot, endDate: e.target.value})}
-                                                        min={newSlot.startDate}
-                                                        className="w-full px-2 py-1 border border-gray-200 rounded text-sm"
-                                                    />
-                                                </div>
-                                                <div className="flex gap-2 pt-2">
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleDateRangeSelect}
-                                                        disabled={!newSlot.startDate || !newSlot.endDate}
-                                                        className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:bg-gray-300"
-                                                    >
-                                                        Apply
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setShowDatePicker(false)}
-                                                        className="px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300"
-                                                    >
-                                                        Cancel
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
+                                    <div className="text-sm text-gray-600 mb-4">
+                                        {selectionStart ? (
+                                            <p className="text-blue-600 font-medium">
+                                                📅 Click a second date to complete your selection
+                                            </p>
+                                        ) : (
+                                            <p>
+                                                Click dates on the calendar to select ranges. First click = start date, second click = end date.
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
-                                
-                                <button
-                                    onClick={addTimeSlot}
-                                    disabled={!workshopDescription || !newSlot.startDate || !newSlot.endDate}
-                                    className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-                                >
-                                    <Plus className="icon" />
-                                    Add Time Slot & Save
-                                </button>
-                            </div>
-                        </div>
 
-                        {timeSlots.length > 0 && (
-                            <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-                                <h3 className="text-lg font-semibold mb-2">{workshopDescription}</h3>
-                                <p className="text-sm text-gray-600 mb-4">Available time slots for this workshop:</p>
-                                <div className="space-y-3">
-                                    {timeSlots.map((slot) => {
-                                        const formattedDate = formatDateRange(slot.dateFrom, slot.dateTo);
-                                        return (
-                                            <div key={slot.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                                <div className="flex items-center gap-3">
-                                                    <Clock className="icon-lg text-gray-500" />
+                                <CalendarComponent
+                                    dateRanges={dateRanges}
+                                    onDateClick={handleAdminDateClick}
+                                    isAdmin={true}
+                                    participants={participants}
+                                    selectionStart={selectionStart}
+                                    highlightedRange={highlightedRange}
+                                />
+                            </div>
+
+                            {/* Right Column - Selected Ranges and Results */}
+                            <div className="space-y-6">
+                                {dateRanges.length > 0 && (
+                                    <div className="bg-white border border-gray-200 rounded-lg p-6">
+                                        <h3 className="text-lg font-semibold mb-4">Selected Date Ranges</h3>
+                                        <div className="space-y-3">
+                                            {dateRanges.map((range) => (
+                                                <div key={range.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                                                     <div>
-                                                        <div className="font-medium">{formattedDate}</div>
+                                                        <div className="font-medium">{formatRangeDisplay(range)}</div>
                                                     </div>
+                                                    <button
+                                                        onClick={() => removeRange(range.id)}
+                                                        className="text-red-600 hover:text-red-800 p-1"
+                                                    >
+                                                        <Trash2 className="icon" />
+                                                    </button>
                                                 </div>
-                                                <button
-                                                    onClick={() => removeTimeSlot(slot.id)}
-                                                    className="text-red-600 hover:text-red-800 p-1"
-                                                >
-                                                    <Trash2 className="icon" />
-                                                </button>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
 
-                        {timeSlots.length > 0 && totalParticipants > 0 && (
-                            <div className="bg-white border border-gray-200 rounded-lg p-6">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <Users className="icon-2xl text-green-600" />
-                                    <h3 className="text-xl font-semibold">Results Analysis</h3>
-                                    <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm font-medium">
-                                        {totalParticipants} participant{totalParticipants !== 1 ? 's' : ''}
-                                    </span>
-                                    <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-sm font-medium">
-                                        Synced with Sheets
-                                    </span>
-                                </div>
-                                
-                                <div className="space-y-4">
-                                    {sortedSlotsByPopularity.map((slot) => {
-                                        const count = getSlotParticipantCount(slot.id);
-                                        const slotParticipants = getSlotParticipants(slot.id);
-                                        const percentage = totalParticipants > 0 ? (count / totalParticipants) * 100 : 0;
-                                        const formattedDate = formatDateRange(slot.dateFrom, slot.dateTo);
-                                        const isWinner = count === maxAvailability && count > 0;
+                                {totalParticipants > 0 && sortedDates.length > 0 && (
+                                    <div className="bg-white border border-gray-200 rounded-lg p-6">
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <Users className="icon-lg text-green-600" />
+                                            <h3 className="text-lg font-semibold">Results ({totalParticipants} participants)</h3>
+                                        </div>
                                         
-                                        return (
-                                            <div key={slot.id} className={`p-4 rounded-lg border-2 ${isWinner ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'}`}>
-                                                <div className="flex items-start justify-between mb-2">
-                                                    <div className="flex items-center gap-2">
-                                                        {isWinner && <CheckCircle className="icon-lg text-green-600" />}
-                                                        <div>
-                                                            <div className="font-semibold text-lg">{formattedDate}</div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <div className={`text-2xl font-bold ${isWinner ? 'text-green-600' : 'text-gray-900'}`}>
-                                                            {count}/{totalParticipants}
-                                                        </div>
-                                                        <div className="text-sm text-gray-500">{Math.round(percentage)}% available</div>
-                                                    </div>
-                                                </div>
+                                        <div className="space-y-3 max-h-96 overflow-y-auto">
+                                            {sortedDates.filter(date => date.count > 0).map((date, index) => {
+                                                const percentage = totalParticipants > 0 ? (date.count / totalParticipants) * 100 : 0;
+                                                const isWinner = index === 0 && date.count > 0;
                                                 
-                                                <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
-                                                    <div 
-                                                        className={`h-2 rounded-full ${isWinner ? 'bg-green-500' : 'bg-blue-500'}`}
-                                                        style={{ width: `${percentage}%` }}
-                                                    ></div>
-                                                </div>
-                                                
-                                                {slotParticipants.length > 0 && (
-                                                    <div className="flex flex-wrap gap-2">
-                                                        {slotParticipants.map((name) => (
-                                                            <span key={name} className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
-                                                                {name}
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-
-                                {maxAvailability > 0 && (
-                                    <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-                                        <h4 className="font-semibold text-green-800 mb-2">🏆 Winner Date{sortedSlotsByPopularity.filter(slot => getSlotParticipantCount(slot.id) === maxAvailability).length > 1 ? 's' : ''}:</h4>
-                                        <div className="space-y-1">
-                                            {sortedSlotsByPopularity
-                                                .filter(slot => getSlotParticipantCount(slot.id) === maxAvailability)
-                                                .map(slot => {
-                                                    const formattedDate = formatDateRange(slot.dateFrom, slot.dateTo);
-                                                    return (
-                                                        <div key={slot.id} className="text-green-700 font-medium">
-                                                            {formattedDate}
+                                                return (
+                                                    <div key={date.dateKey} className={`p-3 rounded-lg border ${isWinner ? 'border-green-500 bg-green-50' : 'border-gray-200'}`}>
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <div className="flex items-center gap-2">
+                                                                {isWinner && <CheckCircle className="icon text-green-600" />}
+                                                                <div className="font-medium">{date.displayDate}</div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <div className="font-bold">{date.count}/{totalParticipants}</div>
+                                                                <div className="text-sm text-gray-500">{Math.round(percentage)}%</div>
+                                                            </div>
                                                         </div>
-                                                    );
-                                                })}
+                                                        <div className="w-full bg-gray-200 rounded-full h-2">
+                                                            <div 
+                                                                className={`h-2 rounded-full ${isWinner ? 'bg-green-500' : 'bg-blue-500'}`}
+                                                                style={{ width: `${percentage}%` }}
+                                                            ></div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 )}
                             </div>
-                        )}
-
-                        {timeSlots.length === 0 && (
-                            <div className="text-center py-12 bg-gray-50 rounded-lg">
-                                <Calendar className="icon-3xl text-gray-400 mx-auto mb-4" />
-                                <h3 className="text-lg font-medium text-gray-900 mb-2">No Time Slots Yet</h3>
-                                <p className="text-gray-600">Add your first workshop time slot to get started.</p>
-                            </div>
-                        )}
+                        </div>
                     </div>
                 );
             }
 
+            // Participant View
             return (
-                <div className="max-w-4xl mx-auto p-6 bg-white">
+                <div className="max-w-6xl mx-auto p-6 bg-white">
                     <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-3">
                             <Users className="icon-xl text-green-600" />
@@ -994,105 +765,89 @@
                         </button>
                     </div>
 
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-                        <div className="mb-3">
-                            <label className="block text-sm font-medium text-green-900 mb-2">Your Name</label>
-                            <input
-                                type="text"
-                                placeholder="Enter your name"
-                                value={participantName}
-                                onChange={(e) => setParticipantName(e.target.value)}
-                                className="w-full max-w-sm px-3 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Left Column - Participant Info and Calendar */}
+                        <div className="space-y-6">
+                            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                <div className="mb-3">
+                                    <label className="block text-sm font-medium text-green-900 mb-2">Your Name</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Enter your name"
+                                        value={participantName}
+                                        onChange={(e) => setParticipantName(e.target.value)}
+                                        className="w-full max-w-sm px-3 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                    />
+                                </div>
+                                <p className="text-green-700 text-sm">
+                                    Click on available dates in the calendar to select your availability. 
+                                    Selected dates will turn green.
+                                </p>
+                            </div>
+
+                            <CalendarComponent
+                                dateRanges={dateRanges}
+                                onDateClick={handleParticipantDateClick}
+                                isAdmin={false}
+                                participants={participants}
                             />
                         </div>
-                        <p className="text-green-700">Select all the time slots where you're available for the workshop, then confirm your availability. Your response will be automatically saved to Google Sheets.</p>
-                    </div>
 
-                    {timeSlots.length === 0 ? (
-                        <div className="text-center py-12 bg-gray-50 rounded-lg">
-                            <Calendar className="icon-3xl text-gray-400 mx-auto mb-4" />
-                            <h3 className="text-lg font-medium text-gray-900 mb-2">No Time Slots Available</h3>
-                            <p className="text-gray-600">The administrator hasn't added any workshop time slots yet.</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-4">
-                            {timeSlots.map((slot) => {
-                                const formattedDate = formatDateRange(slot.dateFrom, slot.dateTo);
-                                const isSelected = participantName && participants[participantName]?.includes(slot.id);
-                                const participantCount = getSlotParticipantCount(slot.id);
-                                
-                                return (
-                                    <div 
-                                        key={slot.id} 
-                                        className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                                            isSelected 
-                                                ? 'border-green-500 bg-green-50' 
-                                                : 'border-gray-200 bg-white hover:border-gray-300'
-                                        } ${!participantName ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                        onClick={() => toggleAvailability(slot.id)}
-                                    >
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-                                                    isSelected ? 'border-green-500 bg-green-500' : 'border-gray-300'
-                                                }`}>
-                                                    {isSelected && <CheckCircle className="icon text-white" />}
-                                                </div>
-                                                <div>
-                                                    <div className="font-semibold text-lg">{formattedDate}</div>
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <div className="text-sm text-gray-500">
-                                                    {participantCount} participant{participantCount !== 1 ? 's' : ''} available
-                                                </div>
-                                            </div>
-                                        </div>
+                        {/* Right Column - Selection Summary */}
+                        <div className="space-y-6">
+                            {participantName && participants[participantName]?.length > 0 && (
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                    <h4 className="font-semibold text-blue-800 mb-3">Your Selected Dates:</h4>
+                                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                                        {participants[participantName]
+                                            .sort()
+                                            .map(dateKey => {
+                                                const date = new Date(dateKey);
+                                                const displayDate = date.toLocaleDateString('en-US', { 
+                                                    weekday: 'long', 
+                                                    year: 'numeric', 
+                                                    month: 'long', 
+                                                    day: 'numeric' 
+                                                });
+                                                return (
+                                                    <div key={dateKey} className="text-blue-700 text-sm">
+                                                        ✓ {displayDate}
+                                                    </div>
+                                                );
+                                            })}
                                     </div>
-                                );
-                            })}
-                        </div>
-                    )}
-
-                    {participantName && participants[participantName]?.length > 0 && (
-                        <div className="mt-6 space-y-4">
-                            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                                <h4 className="font-semibold text-blue-800 mb-2">Your Selected Time Slots:</h4>
-                                <div className="space-y-1">
-                                    {timeSlots
-                                        .filter(slot => participants[participantName]?.includes(slot.id))
-                                        .map(slot => {
-                                            const formattedDate = formatDateRange(slot.dateFrom, slot.dateTo);
-                                            return (
-                                                <div key={slot.id} className="text-blue-700">
-                                                    ✓ {formattedDate}
-                                                </div>
-                                            );
-                                        })}
+                                    
+                                    <div className="mt-4">
+                                        <button
+                                            onClick={confirmAvailability}
+                                            disabled={saving}
+                                            className="w-full px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                        >
+                                            {saving ? (
+                                                <>
+                                                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                                                    Saving...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Save className="icon" />
+                                                    Confirm My Availability
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
-                            
-                            <div className="flex justify-center">
-                                <button
-                                    onClick={confirmAvailability}
-                                    disabled={saving}
-                                    className="px-8 py-3 bg-green-600 text-white text-lg font-semibold rounded-lg hover:bg-green-700 transition-colors shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
-                                >
-                                    {saving ? (
-                                        <>
-                                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                                            Saving to Google Sheets...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Save className="icon" />
-                                            Confirm My Availability
-                                        </>
-                                    )}
-                                </button>
-                            </div>
+                            )}
+
+                            {dateRanges.length === 0 && (
+                                <div className="text-center py-12 bg-gray-50 rounded-lg">
+                                    <Calendar className="icon-3xl text-gray-400 mx-auto mb-4" />
+                                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Dates Available</h3>
+                                    <p className="text-gray-600">The administrator hasn't selected any date ranges yet.</p>
+                                </div>
+                            )}
                         </div>
-                    )}
+                    </div>
                 </div>
             );
         };
