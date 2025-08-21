@@ -367,6 +367,10 @@
             const confirmAvailability = async () => {
                 if (participantName && participants[participantName]?.length > 0) {
                     setSaving(true);
+                    
+                    // Small delay to ensure React state has updated
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    
                     try {
                         console.log('=== SAVING PARTICIPANT RESPONSE ===');
                         console.log('Participant name:', participantName);
@@ -954,7 +958,7 @@
                                                     const formattedDate = formatDateRange(slot.dateFrom, slot.dateTo);
                                                     return (
                                                         <div key={slot.id} className="text-green-700 font-medium">
-                                                            {slot.description} - {formattedDate}
+                                                            {formattedDate}
                                                         </div>
                                                     );
                                                 })}
