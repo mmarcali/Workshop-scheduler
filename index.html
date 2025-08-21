@@ -511,9 +511,46 @@
             }
 
             if (currentView === 'thank-you') {
+                // Load fresh data when showing results
+                const [resultsData, setResultsData] = useState({ timeSlots: [], participants: {} });
+                const [loadingResults, setLoadingResults] = useState(true);
+
+                useEffect(() => {
+                    const loadResultsData = async () => {
+                        try {
+                            const data = await loadFromSheets();
+                            setResultsData({
+                                timeSlots: data.config.timeSlots || [],
+                                participants: data.participants || {}
+                            });
+                        } catch (error) {
+                            console.error('Error loading results:', error);
+                        } finally {
+                            setLoadingResults(false);
+                        }
+                    };
+                    loadResultsData();
+                }, []);
+
+                const getResultsSlotParticipantCount = (slotId) => {
+                    return Object.values(resultsData.participants).filter(availability => 
+                        availability.includes(slotId)
+                    ).length;
+                };
+
+                const sortedResultsByPopularity = [...resultsData.timeSlots].sort((a, b) => {
+                    const countA = getResultsSlotParticipantCount(a.id);
+                    const countB = getResultsSlotParticipantCount(b.id);
+                    if (countA !== countB) return countB - countA;
+                    return a.dateFromObj - b.dateFromObj;
+                });
+
+                const totalResultsParticipants = Object.keys(resultsData.participants).length;
+                const maxResultsAvailability = Math.max(...resultsData.timeSlots.map(slot => getResultsSlotParticipantCount(slot.id)), 0);
+
                 return (
-                    <div className="max-w-4xl mx-auto p-6 bg-white min-h-screen flex items-center justify-center">
-                        <div className="text-center">
+                    <div className="max-w-4xl mx-auto p-6 bg-white min-h-screen">
+                        <div className="text-center mb-8">
                             <div className="mb-6">
                                 <CheckCircle className="icon-3xl text-green-600 mx-auto mb-4" />
                                 <h1 className="text-4xl font-bold text-gray-900 mb-2">Thank You for Your Vote!</h1>
@@ -524,25 +561,123 @@
                                 <h3 className="font-semibold text-green-800 mb-2">What's Next?</h3>
                                 <p className="text-green-700 text-sm">
                                     The workshop organizer will review all responses and announce the final dates soon. 
-                                    Your response has been securely stored in Google Sheets.
+                                    Check out the current results below!
                                 </p>
                             </div>
+                        </div>
 
-                            <div className="space-y-3">
-                                <button
-                                    onClick={() => switchToView('participant')}
-                                    className="block w-full max-w-sm mx-auto px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                                >
-                                    View/Edit My Response
-                                </button>
-                                
-                                <button
-                                    onClick={() => switchToView('admin')}
-                                    className="block w-full max-w-sm mx-auto px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-                                >
-                                    View Results (Admin)
-                                </button>
+                        {loadingResults ? (
+                            <div className="text-center">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                                <p className="text-gray-600">Loading current results...</p>
                             </div>
+                        ) : resultsData.timeSlots.length > 0 && totalResultsParticipants > 0 ? (
+                            <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <Users className="icon-2xl text-blue-600" />
+                                    <h3 className="text-xl font-semibold">Current Results</h3>
+                                    <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm font-medium">
+                                        {totalResultsParticipants} vote{totalResultsParticipants !== 1 ? 's' : ''} so far
+                                    </span>
+                                </div>
+                                
+                                <div className="space-y-4">
+                                    {sortedResultsByPopularity.map((slot, index) => {
+                                        const count = getResultsSlotParticipantCount(slot.id);
+                                        const percentage = totalResultsParticipants > 0 ? (count / totalResultsParticipants) * 100 : 0;
+                                        const formattedDate = formatDateRange(slot.dateFrom, slot.dateTo);
+                                        const isWinner = count === maxResultsAvailability && count > 0;
+                                        const rank = index + 1;
+                                        
+                                        return (
+                                            <div key={slot.id} className={`p-4 rounded-lg border-2 ${isWinner ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'}`}>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white ${
+                                                            rank === 1 ? 'bg-yellow-500' : 
+                                                            rank === 2 ? 'bg-gray-400' : 
+                                                            rank === 3 ? 'bg-orange-400' : 'bg-gray-300'
+                                                        }`}>
+                                                            {rank}
+                                                        </div>
+                                                        {isWinner && <CheckCircle className="icon-lg text-green-600" />}
+                                                        <div>
+                                                            <div className={`font-semibold text-lg ${isWinner ? 'text-green-700' : 'text-gray-900'}`}>
+                                                                {slot.description}
+                                                            </div>
+                                                            <div className="text-gray-600">{formattedDate}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <div className={`text-2xl font-bold ${isWinner ? 'text-green-600' : 'text-gray-900'}`}>
+                                                            {count}/{totalResultsParticipants}
+                                                        </div>
+                                                        <div className="text-sm text-gray-500">{Math.round(percentage)}% available</div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="w-full bg-gray-200 rounded-full h-3">
+                                                    <div 
+                                                        className={`h-3 rounded-full ${
+                                                            rank === 1 ? 'bg-yellow-500' : 
+                                                            rank === 2 ? 'bg-gray-400' : 
+                                                            rank === 3 ? 'bg-orange-400' : 'bg-gray-300'
+                                                        } ${isWinner ? 'bg-green-500' : ''}`}
+                                                        style={{ width: `${percentage}%` }}
+                                                    ></div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {maxResultsAvailability > 0 && (
+                                    <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                                        <h4 className="font-semibold text-green-800 mb-2">
+                                            🏆 Current Winner{sortedResultsByPopularity.filter(slot => getResultsSlotParticipantCount(slot.id) === maxResultsAvailability).length > 1 ? 's' : ''}:
+                                        </h4>
+                                        <div className="space-y-1">
+                                            {sortedResultsByPopularity
+                                                .filter(slot => getResultsSlotParticipantCount(slot.id) === maxResultsAvailability)
+                                                .map(slot => {
+                                                    const formattedDate = formatDateRange(slot.dateFrom, slot.dateTo);
+                                                    return (
+                                                        <div key={slot.id} className="text-green-700 font-medium">
+                                                            {slot.description} - {formattedDate}
+                                                        </div>
+                                                    );
+                                                })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <p className="text-sm text-blue-700">
+                                        <strong>Note:</strong> Results update in real-time as more team members vote. 
+                                        The final decision will be announced once everyone has responded.
+                                    </p>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center py-8 bg-gray-50 rounded-lg">
+                                <p className="text-gray-600">No results to display yet. More votes needed!</p>
+                            </div>
+                        )}
+
+                        <div className="text-center space-y-3">
+                            <button
+                                onClick={() => switchToView('participant')}
+                                className="block w-full max-w-sm mx-auto px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                            >
+                                View/Edit My Response
+                            </button>
+                            
+                            <button
+                                onClick={() => switchToView('admin')}
+                                className="block w-full max-w-sm mx-auto px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                            >
+                                View Full Results (Admin)
+                            </button>
                         </div>
                     </div>
                 );
