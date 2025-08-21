@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workshop Scheduler</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Lucide icons as inline SVG components */
+        .icon { width: 1rem; height: 1rem; display: inline-block; }
+        .icon-lg { width: 1.5rem; height: 1.5rem; }
+        .icon-xl { width: 2rem; height: 2rem; }
+        .icon-2xl { width: 4rem; height: 4rem; }
+        .icon-3xl { width: 5rem; height: 5rem; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Icon components (simplified Lucide icons)
+        const Calendar = ({ className = "icon" }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+        );
+
+        const Clock = ({ className = "icon" }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12,6 12,12 16,14"></polyline>
+            </svg>
+        );
+
+        const Users = ({ className = "icon" }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+        );
+
+        const Plus = ({ className = "icon" }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+        );
+
+        const Trash2 = ({ className = "icon" }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <polyline points="3,6 5,6 21,6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                <line x1="10" y1="11" x2="10" y2="17"></line>
+                <line x1="14" y1="11" x2="14" y2="17"></line>
+            </svg>
+        );
+
+        const CheckCircle = ({ className = "icon" }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22,4 12,14.01 9,11.01"></polyline>
+            </svg>
+        );
+
+        const User = ({ className = "icon" }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+        );
+
+        const Settings = ({ className = "icon" }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+        );
+
+        const Link = ({ className = "icon" }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+            </svg>
+        );
+
+        const WorkshopScheduler = () => {
+            const [currentView, setCurrentView] = useState('admin');
+            const [participantName, setParticipantName] = useState('');
+            const [timeSlots, setTimeSlots] = useState([]);
+            const [participants, setParticipants] = useState({});
+            const [workshopDescription, setWorkshopDescription] = useState('');
+            const [newSlot, setNewSlot] = useState({
+                startDate: '',
+                endDate: ''
+            });
+            const [showDatePicker, setShowDatePicker] = useState(false);
+
+            // Handle URL-based navigation
+            useEffect(() => {
+                const checkHash = () => {
+                    const hash = window.location.hash.substring(1);
+                    if (hash === 'participant') {
+                        setCurrentView('participant');
+                    } else if (hash === 'thank-you') {
+                        setCurrentView('thank-you');
+                    } else {
+                        setCurrentView('admin');
+                    }
+                };
+                
+                checkHash();
+                window.addEventListener('hashchange', checkHash);
+                return () => window.removeEventListener('hashchange', checkHash);
+            }, []);
+
+            const switchToView = (view) => {
+                if (view === 'participant') {
+                    window.location.hash = 'participant';
+                } else if (view === 'thank-you') {
+                    window.location.hash = 'thank-you';
+                } else {
+                    window.location.hash = '';
+                }
+                setCurrentView(view);
+            };
+
+            const copyParticipantLink = () => {
+                const participantUrl = `${window.location.origin}${window.location.pathname}#participant`;
+                navigator.clipboard.writeText(participantUrl);
+                alert('Participant link copied to clipboard!');
+            };
+
+            const confirmAvailability = () => {
+                if (participantName && participants[participantName]?.length > 0) {
+                    switchToView('thank-you');
+                }
+            };
+
+            const addTimeSlot = () => {
+                if (newSlot.startDate && newSlot.endDate && workshopDescription) {
+                    const slot = {
+                        id: Date.now(),
+                        dateFrom: newSlot.startDate,
+                        dateTo: newSlot.endDate,
+                        description: workshopDescription,
+                        dateFromObj: new Date(newSlot.startDate),
+                        dateToObj: new Date(newSlot.endDate)
+                    };
+                    setTimeSlots([...timeSlots, slot]);
+                    setNewSlot({ startDate: '', endDate: '' });
+                }
+            };
+
+            const removeTimeSlot = (id) => {
+                setTimeSlots(timeSlots.filter(slot => slot.id !== id));
+                const updatedParticipants = {};
+                Object.keys(participants).forEach(name => {
+                    updatedParticipants[name] = participants[name].filter(slotId => slotId !== id);
+                });
+                setParticipants(updatedParticipants);
+            };
+
+            const toggleAvailability = (slotId) => {
+                if (!participantName) return;
+                
+                const currentAvailability = participants[participantName] || [];
+                let updatedAvailability;
+                
+                if (currentAvailability.includes(slotId)) {
+                    updatedAvailability = currentAvailability.filter(id => id !== slotId);
+                } else {
+                    updatedAvailability = [...currentAvailability, slotId];
+                }
+                
+                setParticipants({
+                    ...participants,
+                    [participantName]: updatedAvailability
+                });
+            };
+
+            const getSlotParticipantCount = (slotId) => {
+                return Object.values(participants).filter(availability => 
+                    availability.includes(slotId)
+                ).length;
+            };
+
+            const getSlotParticipants = (slotId) => {
+                return Object.keys(participants).filter(name => 
+                    participants[name].includes(slotId)
+                );
+            };
+
+            const sortedSlotsByPopularity = [...timeSlots].sort((a, b) => {
+                const countA = getSlotParticipantCount(a.id);
+                const countB = getSlotParticipantCount(b.id);
+                if (countA !== countB) return countB - countA;
+                return a.dateFromObj - b.dateFromObj;
+            });
+
+            const formatDateRange = (dateFrom, dateTo) => {
+                const startDate = new Date(dateFrom);
+                const endDate = new Date(dateTo);
+                
+                const formatOptions = { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                };
+                
+                if (dateFrom === dateTo) {
+                    return startDate.toLocaleDateString('en-US', formatOptions);
+                } else {
+                    return `${startDate.toLocaleDateString('en-US', formatOptions)} - ${endDate.toLocaleDateString('en-US', formatOptions)}`;
+                }
+            };
+
+            const formatDateRangeDisplay = () => {
+                if (!newSlot.startDate) return 'Select date range';
+                
+                const startDate = new Date(newSlot.startDate);
+                const endDate = new Date(newSlot.endDate);
+                
+                if (newSlot.startDate === newSlot.endDate) {
+                    return startDate.toLocaleDateString('en-US', { 
+                        weekday: 'long', 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric' 
+                    });
+                } else {
+                    return `${startDate.toLocaleDateString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric' 
+                    })} - ${endDate.toLocaleDateString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric',
+                        year: 'numeric' 
+                    })}`;
+                }
+            };
+
+            const handleDateRangeSelect = () => {
+                setShowDatePicker(false);
+            };
+
+            const totalParticipants = Object.keys(participants).length;
+            const maxAvailability = Math.max(...timeSlots.map(slot => getSlotParticipantCount(slot.id)), 0);
+
+            if (currentView === 'thank-you') {
+                return (
+                    <div className="max-w-4xl mx-auto p-6 bg-white min-h-screen flex items-center justify-center">
+                        <div className="text-center">
+                            <div className="mb-6">
+                                <CheckCircle className="icon-3xl text-green-600 mx-auto mb-4" />
+                                <h1 className="text-4xl font-bold text-gray-900 mb-2">Thank You for Your Vote!</h1>
+                                <p className="text-xl text-gray-600 mb-6">Your availability has been successfully recorded.</p>
+                            </div>
+                            
+                            <div className="bg-green-50 border border-green-200 rounded-lg p-6 mb-6 max-w-md mx-auto">
+                                <h3 className="font-semibold text-green-800 mb-2">What's Next?</h3>
+                                <p className="text-green-700 text-sm">
+                                    The workshop organizer will review all responses and announce the final dates soon. 
+                                    You'll be notified once the decision is made.
+                                </p>
+                            </div>
+
+                            <div className="space-y-3">
+                                <button
+                                    onClick={() => switchToView('participant')}
+                                    className="block w-full max-w-sm mx-auto px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                >
+                                    View/Edit My Response
+                                </button>
+                                
+                                <button
+                                    onClick={() => switchToView('admin')}
+                                    className="block w-full max-w-sm mx-auto px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                                >
+                                    View Results (Admin)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (currentView === 'admin') {
+                return (
+                    <div className="max-w-4xl mx-auto p-6 bg-white">
+                        <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center gap-3">
+                                <Calendar className="icon-xl text-blue-600" />
+                                <h1 className="text-3xl font-bold text-gray-900">Workshop Scheduler</h1>
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={copyParticipantLink}
+                                    className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                                >
+                                    <Link className="icon" />
+                                    Copy Participant Link
+                                </button>
+                                <button
+                                    onClick={() => switchToView('participant')}
+                                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                                >
+                                    <User className="icon" />
+                                    Participant View
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Settings className="icon-lg text-blue-600" />
+                                <h2 className="text-lg font-semibold text-blue-900">Admin Panel</h2>
+                            </div>
+                            <p className="text-blue-700">Define time slots for your workshop. Participants will select their availability for each slot.</p>
+                            <div className="mt-3 p-3 bg-blue-100 rounded-lg">
+                                <p className="text-sm text-blue-800">
+                                    <strong>Share with participants:</strong> Send them the participant link using the "Copy Participant Link" button above, or they can visit this page and add <code className="bg-blue-200 px-1 rounded">#participant</code> to the URL.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
+                            <h3 className="text-lg font-semibold mb-4">Workshop Details</h3>
+                            <div className="mb-4">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Workshop Description</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g., Sprint Planning Workshop"
+                                    value={workshopDescription}
+                                    onChange={(e) => setWorkshopDescription(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                                <p className="text-sm text-gray-500 mt-1">All time slots will be added under this workshop description.</p>
+                            </div>
+                            
+                            <h4 className="text-md font-medium mb-3">Add Time Slots</h4>
+                            <div className="space-y-4">
+                                <div className="relative">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Date Range</label>
+                                    <div 
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 cursor-pointer bg-white flex items-center justify-between"
+                                        onClick={() => setShowDatePicker(!showDatePicker)}
+                                    >
+                                        <span className={`${!newSlot.startDate ? 'text-gray-500' : 'text-gray-900'}`}>
+                                            {formatDateRangeDisplay()}
+                                        </span>
+                                        <Calendar className="icon-lg text-gray-400" />
+                                    </div>
+                                    
+                                    {showDatePicker && (
+                                        <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-10 p-4 min-w-full">
+                                            <div className="space-y-3">
+                                                <div>
+                                                    <label className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
+                                                    <input
+                                                        type="date"
+                                                        value={newSlot.startDate}
+                                                        onChange={(e) => setNewSlot({...newSlot, startDate: e.target.value, endDate: e.target.value})}
+                                                        className="w-full px-2 py-1 border border-gray-200 rounded text-sm"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-medium text-gray-600 mb-1">End Date</label>
+                                                    <input
+                                                        type="date"
+                                                        value={newSlot.endDate}
+                                                        onChange={(e) => setNewSlot({...newSlot, endDate: e.target.value})}
+                                                        min={newSlot.startDate}
+                                                        className="w-full px-2 py-1 border border-gray-200 rounded text-sm"
+                                                    />
+                                                </div>
+                                                <div className="flex gap-2 pt-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleDateRangeSelect}
+                                                        disabled={!newSlot.startDate || !newSlot.endDate}
+                                                        className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:bg-gray-300"
+                                                    >
+                                                        Apply
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowDatePicker(false)}
+                                                        className="px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                <button
+                                    onClick={addTimeSlot}
+                                    disabled={!workshopDescription || !newSlot.startDate || !newSlot.endDate}
+                                    className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                                >
+                                    <Plus className="icon" />
+                                    Add Time Slot
+                                </button>
+                            </div>
+                        </div>
+
+                        {timeSlots.length > 0 && (
+                            <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
+                                <h3 className="text-lg font-semibold mb-2">{workshopDescription}</h3>
+                                <p className="text-sm text-gray-600 mb-4">Available time slots for this workshop:</p>
+                                <div className="space-y-3">
+                                    {timeSlots.map((slot) => {
+                                        const formattedDate = formatDateRange(slot.dateFrom, slot.dateTo);
+                                        return (
+                                            <div key={slot.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                                <div className="flex items-center gap-3">
+                                                    <Clock className="icon-lg text-gray-500" />
+                                                    <div>
+                                                        <div className="font-medium">{formattedDate}</div>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => removeTimeSlot(slot.id)}
+                                                    className="text-red-600 hover:text-red-800 p-1"
+                                                >
+                                                    <Trash2 className="icon" />
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {timeSlots.length > 0 && totalParticipants > 0 && (
+                            <div className="bg-white border border-gray-200 rounded-lg p-6">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <Users className="icon-2xl text-green-600" />
+                                    <h3 className="text-xl font-semibold">Results Analysis</h3>
+                                    <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm font-medium">
+                                        {totalParticipants} participant{totalParticipants !== 1 ? 's' : ''}
+                                    </span>
+                                </div>
+                                
+                                <div className="space-y-4">
+                                    {sortedSlotsByPopularity.map((slot) => {
+                                        const count = getSlotParticipantCount(slot.id);
+                                        const slotParticipants = getSlotParticipants(slot.id);
+                                        const percentage = totalParticipants > 0 ? (count / totalParticipants) * 100 : 0;
+                                        const formattedDate = formatDateRange(slot.dateFrom, slot.dateTo);
+                                        const isWinner = count === maxAvailability && count > 0;
+                                        
+                                        return (
+                                            <div key={slot.id} className={`p-4 rounded-lg border-2 ${isWinner ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'}`}>
+                                                <div className="flex items-start justify-between mb-2">
+                                                    <div className="flex items-center gap-2">
+                                                        {isWinner && <CheckCircle className="icon-lg text-green-600" />}
+                                                        <div>
+                                                            <div className="font-semibold text-lg">{slot.description}</div>
+                                                            <div className="text-gray-600">{formattedDate}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <div className={`text-2xl font-bold ${isWinner ? 'text-green-600' : 'text-gray-900'}`}>
+                                                            {count}/{totalParticipants}
+                                                        </div>
+                                                        <div className="text-sm text-gray-500">{Math.round(percentage)}% available</div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
+                                                    <div 
+                                                        className={`h-2 rounded-full ${isWinner ? 'bg-green-500' : 'bg-blue-500'}`}
+                                                        style={{ width: `${percentage}%` }}
+                                                    ></div>
+                                                </div>
+                                                
+                                                {slotParticipants.length > 0 && (
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {slotParticipants.map((name) => (
+                                                            <span key={name} className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
+                                                                {name}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {maxAvailability > 0 && (
+                                    <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                                        <h4 className="font-semibold text-green-800 mb-2">🏆 Winner Date{sortedSlotsByPopularity.filter(slot => getSlotParticipantCount(slot.id) === maxAvailability).length > 1 ? 's' : ''}:</h4>
+                                        <div className="space-y-1">
+                                            {sortedSlotsByPopularity
+                                                .filter(slot => getSlotParticipantCount(slot.id) === maxAvailability)
+                                                .map(slot => {
+                                                    const formattedDate = formatDateRange(slot.dateFrom, slot.dateTo);
+                                                    return (
+                                                        <div key={slot.id} className="text-green-700 font-medium">
+                                                            {slot.description} - {formattedDate}
+                                                        </div>
+                                                    );
+                                                })}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {timeSlots.length === 0 && (
+                            <div className="text-center py-12 bg-gray-50 rounded-lg">
+                                <Calendar className="icon-3xl text-gray-400 mx-auto mb-4" />
+                                <h3 className="text-lg font-medium text-gray-900 mb-2">No Time Slots Yet</h3>
+                                <p className="text-gray-600">Add your first workshop time slot to get started.</p>
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+
+            return (
+                <div className="max-w-4xl mx-auto p-6 bg-white">
+                    <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                            <Users className="icon-xl text-green-600" />
+                            <h1 className="text-3xl font-bold text-gray-900">Select Your Availability</h1>
+                        </div>
+                        <button
+                            onClick={() => switchToView('admin')}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                            <Settings className="icon" />
+                            Admin View
+                        </button>
+                    </div>
+
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                        <div className="mb-3">
+                            <label className="block text-sm font-medium text-green-900 mb-2">Your Name</label>
+                            <input
+                                type="text"
+                                placeholder="Enter your name"
+                                value={participantName}
+                                onChange={(e) => setParticipantName(e.target.value)}
+                                className="w-full max-w-sm px-3 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            />
+                        </div>
+                        <p className="text-green-700">Select all the time slots where you're available for the workshop, then confirm your availability.</p>
+                    </div>
+
+                    {timeSlots.length === 0 ? (
+                        <div className="text-center py-12 bg-gray-50 rounded-lg">
+                            <Calendar className="icon-3xl text-gray-400 mx-auto mb-4" />
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">No Time Slots Available</h3>
+                            <p className="text-gray-600">The administrator hasn't added any workshop time slots yet.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {timeSlots.map((slot) => {
+                                const formattedDate = formatDateRange(slot.dateFrom, slot.dateTo);
+                                const isSelected = participantName && participants[participantName]?.includes(slot.id);
+                                const participantCount = getSlotParticipantCount(slot.id);
+                                
+                                return (
+                                    <div 
+                                        key={slot.id} 
+                                        className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                                            isSelected 
+                                                ? 'border-green-500 bg-green-50' 
+                                                : 'border-gray-200 bg-white hover:border-gray-300'
+                                        } ${!participantName ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                        onClick={() => toggleAvailability(slot.id)}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                                                    isSelected ? 'border-green-500 bg-green-500' : 'border-gray-300'
+                                                }`}>
+                                                    {isSelected && <CheckCircle className="icon text-white" />}
+                                                </div>
+                                                <div>
+                                                    <div className="font-semibold text-lg">{slot.description}</div>
+                                                    <div className="text-gray-600">{formattedDate}</div>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-sm text-gray-500">
+                                                    {participantCount} participant{participantCount !== 1 ? 's' : ''} available
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {participantName && participants[participantName]?.length > 0 && (
+                        <div className="mt-6 space-y-4">
+                            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                <h4 className="font-semibold text-blue-800 mb-2">Your Selected Time Slots:</h4>
+                                <div className="space-y-1">
+                                    {timeSlots
+                                        .filter(slot => participants[participantName]?.includes(slot.id))
+                                        .map(slot => {
+                                            const formattedDate = formatDateRange(slot.dateFrom, slot.dateTo);
+                                            return (
+                                                <div key={slot.id} className="text-blue-700">
+                                                    ✓ {slot.description} - {formattedDate}
+                                                </div>
+                                            );
+                                        })}
+                                </div>
+                            </div>
+                            
+                            <div className="flex justify-center">
+                                <button
+                                    onClick={confirmAvailability}
+                                    className="px-8 py-3 bg-green-600 text-white text-lg font-semibold rounded-lg hover:bg-green-700 transition-colors shadow-lg"
+                                >
+                                    Confirm My Availability
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        ReactDOM.render(<WorkshopScheduler />, document.getElementById('root'));
+    </script>
+</body>
+</html>
