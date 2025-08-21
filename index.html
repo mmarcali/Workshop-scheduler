@@ -915,8 +915,7 @@
                                                     <div className="flex items-center gap-2">
                                                         {isWinner && <CheckCircle className="icon-lg text-green-600" />}
                                                         <div>
-                                                            <div className="font-semibold text-lg">{slot.description}</div>
-                                                            <div className="text-gray-600">{formattedDate}</div>
+                                                            <div className="font-semibold text-lg">{formattedDate}</div>
                                                         </div>
                                                     </div>
                                                     <div className="text-right">
@@ -1067,7 +1066,7 @@
                                             const formattedDate = formatDateRange(slot.dateFrom, slot.dateTo);
                                             return (
                                                 <div key={slot.id} className="text-blue-700">
-                                                    ✓ {slot.description} - {formattedDate}
+                                                    ✓ {formattedDate}
                                                 </div>
                                             );
                                         })}
