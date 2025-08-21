@@ -22,8 +22,8 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // Google Apps Script Configuration - CONFIGURED AND READY TO USE
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwRhdCh19lmk4yyrNO9pXUFK6Q_-DkoIGwJdnaZx5FJSxVspjUN7u1RYQ8gM8l-jKLdMA/exec';
+        // Google Apps Script Configuration - UPDATED WITH NEW DEPLOYMENT URL
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxVUTZA03Ct-MPVtf2BN-j7KC86xc295YXVSAgtDETXropngEQBCBbXDeDTB4uXDUFa9w/exec';
 
         // Icon components
         const Calendar = ({ className = "icon" }) => (
@@ -103,18 +103,19 @@
             </svg>
         );
 
-        // Google Sheets API functions
+        // Google Sheets API functions - CORS-friendly version
         const saveToSheets = async (data) => {
             try {
                 console.log('Attempting to save to Google Sheets:', data);
                 console.log('Using URL:', GOOGLE_SCRIPT_URL);
                 
+                // Use form data instead of JSON to avoid CORS preflight
+                const formData = new FormData();
+                formData.append('data', JSON.stringify(data));
+                
                 const response = await fetch(GOOGLE_SCRIPT_URL, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(data)
+                    body: formData
                 });
 
                 console.log('Response status:', response.status);
@@ -182,8 +183,8 @@
                         console.log('❌ GET Error:', getError);
                     }
                     
-                    // Test POST request
-                    console.log('2. Testing POST request...');
+                    // Test POST request with form data (CORS-friendly)
+                    console.log('2. Testing POST request (CORS-friendly)...');
                     const testData = {
                         type: 'config',
                         description: 'Test Workshop Debug',
@@ -195,12 +196,12 @@
                         }]
                     };
                     
+                    const formData = new FormData();
+                    formData.append('data', JSON.stringify(testData));
+                    
                     const postResponse = await fetch(GOOGLE_SCRIPT_URL, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(testData)
+                        body: formData
                     });
                     
                     console.log('POST Response status:', postResponse.status);
