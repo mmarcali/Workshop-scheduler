@@ -1,4 +1,70 @@
-<!DOCTYPE html>
+        // Add to window for debugging
+        window.debugWorkshopScheduler = {
+            testConnection: async () => {
+                console.log('Testing connection to Apps Script...');
+                console.log('URL:', GOOGLE_SCRIPT_URL);
+                
+                try {
+                    // Test GET request
+                    console.log('Testing GET request...');
+                    const getResponse = await fetch(GOOGLE_SCRIPT_URL);
+                    console.log('GET Response status:', getResponse.status);
+                    console.log('GET Response headers:', [...getResponse.headers.entries()]);
+                    
+                    if (getResponse.ok) {
+                        const getData = await getResponse.json();
+                        console.log('GET Success:', getData);
+                    } else {
+                        const getError = await getResponse.text();
+                        console.log('GET Error:', getError);
+                    }
+                    
+                    // Test POST request
+                    console.log('Testing POST request...');
+                    const testData = {
+                        type: 'config',
+                        description: 'Test Workshop',
+                        timeSlots: [{
+                            id: 999999,
+                            dateFrom: '2024-01-15',
+                            dateTo: '2024-01-15',
+                            description: 'Test Workshop'
+                        }]
+                    };
+                    
+                    const postResponse = await fetch(GOOGLE_SCRIPT_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(testData)
+                    });
+                    
+                    console.log('POST Response status:', postResponse.status);
+                    console.log('POST Response headers:', [...postResponse.headers.entries()]);
+                    
+                    if (postResponse.ok) {
+                        const postData = await postResponse.json();
+                        console.log('POST Success:', postData);
+                    } else {
+                        const postError = await postResponse.text();
+                        console.log('POST Error:', postError);
+                    }
+                    
+                } catch (error) {
+                    console.error('Connection test failed:', error);
+                }
+            },
+            
+            getCurrentConfig: () => {
+                return {
+                    url: GOOGLE_SCRIPT_URL,
+                    timeSlots: timeSlots,
+                    participants: participants,
+                    workshopDescription: workshopDescription
+                };
+            }
+        };<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -138,13 +204,25 @@
 
         const loadFromSheets = async () => {
             try {
+                console.log('Loading data from Google Sheets...');
+                console.log('Using URL:', GOOGLE_SCRIPT_URL);
+                
                 const response = await fetch(GOOGLE_SCRIPT_URL);
+                console.log('Load response status:', response.status);
+                console.log('Load response ok:', response.ok);
+                
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    const errorText = await response.text();
+                    console.error('Load response error text:', errorText);
+                    throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
                 }
-                return await response.json();
+                
+                const result = await response.json();
+                console.log('Load success result:', result);
+                return result;
             } catch (error) {
                 console.error('Error loading from Google Sheets:', error);
+                alert(`Error loading data: ${error.message}. Using local data only.`);
                 return { config: { description: '', timeSlots: [] }, participants: {} };
             }
         };
@@ -168,10 +246,19 @@
                 const loadData = async () => {
                     setLoading(true);
                     try {
+                        console.log('=== WORKSHOP SCHEDULER STARTUP ===');
+                        console.log('Apps Script URL:', GOOGLE_SCRIPT_URL);
+                        console.log('Google Sheet URL: https://docs.google.com/spreadsheets/d/1qRAhPCd39aHXP6Ju25_JQNHWP9QBPyn8zB80x2GDk40/edit');
+                        
                         const data = await loadFromSheets();
                         setWorkshopDescription(data.config.description || '');
                         setTimeSlots(data.config.timeSlots || []);
                         setParticipants(data.participants || {});
+                        
+                        console.log('Loaded workshop description:', data.config.description);
+                        console.log('Loaded time slots:', data.config.timeSlots?.length || 0);
+                        console.log('Loaded participants:', Object.keys(data.participants || {}).length);
+                        console.log('=== STARTUP COMPLETE ===');
                     } catch (error) {
                         console.error('Failed to load data:', error);
                     } finally {
@@ -218,11 +305,16 @@
             };
 
             const saveWorkshopConfig = async () => {
-                await saveToSheets({
+                const config = {
                     type: 'config',
                     description: workshopDescription,
                     timeSlots: timeSlots
-                });
+                };
+                
+                console.log('Saving workshop config:', config);
+                console.log('Number of time slots:', timeSlots.length);
+                
+                await saveToSheets(config);
             };
 
             const confirmAvailability = async () => {
@@ -473,9 +565,17 @@
                                 <Save className="icon text-green-600" />
                             </div>
                             <p className="text-green-700">All data is automatically saved to your Google Sheet. Participant responses appear in real-time in the "Responses" tab.</p>
+                            
                             <div className="mt-3 p-3 bg-green-100 rounded-lg">
                                 <p className="text-sm text-green-800">
                                     <strong>Share with participants:</strong> Send them the participant link using the "Copy Participant Link" button above.
+                                </p>
+                            </div>
+                            
+                            <div className="mt-3 p-3 bg-yellow-100 border border-yellow-300 rounded-lg">
+                                <p className="text-sm text-yellow-800">
+                                    <strong>🔧 Troubleshooting:</strong> If you get "Error saving time slot", open browser console (F12) and run: 
+                                    <code className="bg-yellow-200 px-1 rounded ml-1">debugWorkshopScheduler.testConnection()</code>
                                 </p>
                             </div>
                         </div>
