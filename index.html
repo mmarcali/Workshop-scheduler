@@ -263,6 +263,8 @@
             const [showDatePicker, setShowDatePicker] = useState(false);
             const [saving, setSaving] = useState(false);
             const [loading, setLoading] = useState(true);
+            const [resultsData, setResultsData] = useState({ timeSlots: [], participants: {} });
+            const [loadingResults, setLoadingResults] = useState(false);
 
             // Load data on component mount
             useEffect(() => {
@@ -349,6 +351,20 @@
                             name: participantName,
                             selectedSlots: participants[participantName]
                         });
+                        
+                        // Load fresh results data before switching to thank you page
+                        setLoadingResults(true);
+                        try {
+                            const data = await loadFromSheets();
+                            setResultsData({
+                                timeSlots: data.config.timeSlots || [],
+                                participants: data.participants || {}
+                            });
+                        } catch (error) {
+                            console.error('Error loading results for thank you page:', error);
+                        } finally {
+                            setLoadingResults(false);
+                        }
                         
                         switchToView('thank-you');
                     } catch (error) {
@@ -511,27 +527,6 @@
             }
 
             if (currentView === 'thank-you') {
-                // Load fresh data when showing results
-                const [resultsData, setResultsData] = useState({ timeSlots: [], participants: {} });
-                const [loadingResults, setLoadingResults] = useState(true);
-
-                useEffect(() => {
-                    const loadResultsData = async () => {
-                        try {
-                            const data = await loadFromSheets();
-                            setResultsData({
-                                timeSlots: data.config.timeSlots || [],
-                                participants: data.participants || {}
-                            });
-                        } catch (error) {
-                            console.error('Error loading results:', error);
-                        } finally {
-                            setLoadingResults(false);
-                        }
-                    };
-                    loadResultsData();
-                }, []);
-
                 const getResultsSlotParticipantCount = (slotId) => {
                     return Object.values(resultsData.participants).filter(availability => 
                         availability.includes(slotId)
