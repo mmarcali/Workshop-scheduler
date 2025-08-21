@@ -366,6 +366,8 @@
             const [highlightedRange, setHighlightedRange] = useState(null);
             const [saving, setSaving] = useState(false);
             const [loading, setLoading] = useState(true);
+            const [showConfirmation, setShowConfirmation] = useState(false);
+            const [resultsData, setResultsData] = useState({ dateRanges: [], participants: {} });
 
             // Load data on component mount
             useEffect(() => {
@@ -421,17 +423,17 @@
                 alert('Participant link copied to clipboard!');
             };
 
-            const saveWorkshopConfig = async () => {
+            const saveWorkshopConfig = async (updatedRanges = dateRanges) => {
                 const config = {
                     type: 'config',
                     description: workshopDescription,
-                    dateRanges: dateRanges
+                    dateRanges: updatedRanges
                 };
                 
                 await saveToSheets(config);
             };
 
-            const handleAdminDateClick = (date) => {
+            const handleAdminDateClick = async (date) => {
                 if (!selectionStart) {
                     // First click - set start date
                     setSelectionStart(date);
@@ -448,12 +450,19 @@
                         description: workshopDescription
                     };
                     
-                    setDateRanges([...dateRanges, newRange]);
+                    const updatedRanges = [...dateRanges, newRange];
+                    setDateRanges(updatedRanges);
                     setSelectionStart(null);
                     setHighlightedRange(null);
                     
-                    // Save to Google Sheets
-                    saveWorkshopConfig();
+                    // Save to Google Sheets and show confirmation
+                    try {
+                        await saveWorkshopConfig(updatedRanges);
+                        setShowConfirmation(true);
+                        setTimeout(() => setShowConfirmation(false), 3000);
+                    } catch (error) {
+                        console.error('Error saving workshop config:', error);
+                    }
                 }
             };
 
@@ -511,6 +520,18 @@
                         };
                         
                         await saveToSheets(participantData);
+                        
+                        // Load fresh results data for thank you page
+                        try {
+                            const data = await loadFromSheets();
+                            setResultsData({
+                                dateRanges: data.config.dateRanges || [],
+                                participants: data.participants || {}
+                            });
+                        } catch (error) {
+                            console.error('Error loading results for thank you page:', error);
+                        }
+                        
                         switchToView('thank-you');
                     } catch (error) {
                         console.error('Save error:', error);
@@ -524,15 +545,15 @@
             };
 
             // Helper functions for results
-            const getDateParticipantCount = (dateKey) => {
-                return Object.values(participants).filter(availability => 
+            const getDateParticipantCount = (dateKey, participantsData = participants) => {
+                return Object.values(participantsData).filter(availability => 
                     availability.includes(dateKey)
                 ).length;
             };
 
-            const getAllSelectedDates = () => {
+            const getAllSelectedDates = (rangesData = dateRanges, participantsData = participants) => {
                 const allDates = new Set();
-                dateRanges.forEach(range => {
+                rangesData.forEach(range => {
                     const start = new Date(range.startDate);
                     const end = new Date(range.endDate);
                     
@@ -543,7 +564,7 @@
                 
                 return Array.from(allDates).sort().map(dateKey => ({
                     dateKey,
-                    count: getDateParticipantCount(dateKey),
+                    count: getDateParticipantCount(dateKey, participantsData),
                     displayDate: new Date(dateKey).toLocaleDateString('en-US', { 
                         weekday: 'long', 
                         year: 'numeric', 
@@ -588,15 +609,171 @@
             }
 
             if (currentView === 'thank-you') {
+                const totalResultsParticipants = Object.keys(resultsData.participants).length;
+                const sortedResultsDates = getAllSelectedDates(resultsData.dateRanges, resultsData.participants)
+                    .filter(date => date.count > 0)
+                    .sort((a, b) => b.count - a.count);
+
                 return (
-                    <div className="max-w-4xl mx-auto p-6 bg-white min-h-screen">
+                    <div className="max-w-6xl mx-auto p-6 bg-white min-h-screen">
                         <div className="text-center mb-8">
                             <CheckCircle className="icon-3xl text-green-600 mx-auto mb-4" />
                             <h1 className="text-4xl font-bold text-gray-900 mb-2">Thank You!</h1>
                             <p className="text-xl text-gray-600 mb-6">Your availability has been saved successfully.</p>
+                            
+                            <div className="bg-green-50 border border-green-200 rounded-lg p-6 mb-6 max-w-md mx-auto">
+                                <h3 className="font-semibold text-green-800 mb-2">What's Next?</h3>
+                                <p className="text-green-700 text-sm">
+                                    The workshop organizer will review all responses and announce the final dates soon. 
+                                    Check out the current results below!
+                                </p>
+                            </div>
                         </div>
 
-                        <div className="text-center space-y-3">
+                        {totalResultsParticipants > 0 && sortedResultsDates.length > 0 ? (
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                {/* Results Analysis - Left/Center */}
+                                <div className="lg:col-span-2">
+                                    <div className="bg-white border border-gray-200 rounded-lg p-6">
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <Users className="icon-lg text-blue-600" />
+                                            <h3 className="text-xl font-semibold">Current Results</h3>
+                                            <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm font-medium">
+                                                {totalResultsParticipants} vote{totalResultsParticipants !== 1 ? 's' : ''} so far
+                                            </span>
+                                        </div>
+                                        
+                                        <div className="space-y-4 max-h-96 overflow-y-auto">
+                                            {sortedResultsDates.map((date, index) => {
+                                                const percentage = totalResultsParticipants > 0 ? (date.count / totalResultsParticipants) * 100 : 0;
+                                                const isWinner = index === 0 && date.count > 0;
+                                                const rank = index + 1;
+                                                
+                                                return (
+                                                    <div key={date.dateKey} className={`p-4 rounded-lg border-2 ${isWinner ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'}`}>
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white ${
+                                                                    rank === 1 ? 'bg-yellow-500' : 
+                                                                    rank === 2 ? 'bg-gray-400' : 
+                                                                    rank === 3 ? 'bg-orange-400' : 'bg-gray-300'
+                                                                }`}>
+                                                                    {rank}
+                                                                </div>
+                                                                {isWinner && <CheckCircle className="icon-lg text-green-600" />}
+                                                                <div>
+                                                                    <div className={`font-semibold text-lg ${isWinner ? 'text-green-700' : 'text-gray-900'}`}>
+                                                                        {date.displayDate}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <div className={`text-2xl font-bold ${isWinner ? 'text-green-600' : 'text-gray-900'}`}>
+                                                                    {date.count}/{totalResultsParticipants}
+                                                                </div>
+                                                                <div className="text-sm text-gray-500">{Math.round(percentage)}% available</div>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <div className="w-full bg-gray-200 rounded-full h-3">
+                                                            <div 
+                                                                className={`h-3 rounded-full ${
+                                                                    rank === 1 ? 'bg-yellow-500' : 
+                                                                    rank === 2 ? 'bg-gray-400' : 
+                                                                    rank === 3 ? 'bg-orange-400' : 'bg-gray-300'
+                                                                } ${isWinner ? 'bg-green-500' : ''}`}
+                                                                style={{ width: `${percentage}%` }}
+                                                            ></div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {sortedResultsDates.length > 0 && (
+                                            <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                                                <h4 className="font-semibold text-green-800 mb-2">
+                                                    🏆 Current Winner{sortedResultsDates.filter((date, index) => index === 0 && date.count === sortedResultsDates[0]?.count).length > 1 ? 's' : ''}:
+                                                </h4>
+                                                <div className="space-y-1">
+                                                    {sortedResultsDates
+                                                        .filter(date => date.count === sortedResultsDates[0]?.count)
+                                                        .map(date => (
+                                                            <div key={date.dateKey} className="text-green-700 font-medium">
+                                                                {date.displayDate}
+                                                            </div>
+                                                        ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                            <p className="text-sm text-blue-700">
+                                                <strong>Note:</strong> Results update in real-time as more team members vote. 
+                                                The final decision will be announced once everyone has responded.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Luis the Cat - Right Side */}
+                                <div className="lg:col-span-1">
+                                    <div className="bg-white border border-gray-200 rounded-lg p-6 text-center">
+                                        <h3 className="text-lg font-semibold mb-4 text-gray-900">Meet Luis! 🐱</h3>
+                                        <div className="mb-4">
+                                            <img 
+                                                src="./Luis.jpg" 
+                                                alt="Luis the cat" 
+                                                className="w-full h-64 object-cover rounded-lg shadow-md"
+                                                onError={(e) => {
+                                                    e.target.style.display = 'none';
+                                                    e.target.nextSibling.style.display = 'block';
+                                                }}
+                                            />
+                                            <div className="hidden bg-gray-100 h-64 rounded-lg flex items-center justify-center">
+                                                <div className="text-center text-gray-500">
+                                                    <div className="text-4xl mb-2">🐱</div>
+                                                    <p className="text-sm">Luis says thanks for voting!</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <p className="text-sm text-gray-600">
+                                            Luis is keeping an eye on the voting results and purring with approval! 
+                                            Thanks for participating in the workshop scheduling.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <div className="text-center py-8 bg-gray-50 rounded-lg">
+                                    <p className="text-gray-600">No results to display yet. More votes needed!</p>
+                                </div>
+                                <div className="bg-white border border-gray-200 rounded-lg p-6 text-center">
+                                    <h3 className="text-lg font-semibold mb-4 text-gray-900">Meet Luis! 🐱</h3>
+                                    <img 
+                                        src="./Luis.jpg" 
+                                        alt="Luis the cat" 
+                                        className="w-full h-64 object-cover rounded-lg shadow-md"
+                                        onError={(e) => {
+                                            e.target.style.display = 'none';
+                                            e.target.nextSibling.style.display = 'block';
+                                        }}
+                                    />
+                                    <div className="hidden bg-gray-100 h-64 rounded-lg flex items-center justify-center">
+                                        <div className="text-center text-gray-500">
+                                            <div className="text-4xl mb-2">🐱</div>
+                                            <p className="text-sm">Luis says thanks for voting!</p>
+                                        </div>
+                                    </div>
+                                    <p className="text-sm text-gray-600 mt-4">
+                                        Luis is waiting for more votes to come in!
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="text-center space-y-3 mt-8">
                             <button
                                 onClick={() => switchToView('participant')}
                                 className="block w-full max-w-sm mx-auto px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -621,6 +798,14 @@
 
                 return (
                     <div className="max-w-6xl mx-auto p-6 bg-white">
+                        {/* Confirmation Message */}
+                        {showConfirmation && (
+                            <div className="fixed top-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center gap-2">
+                                <CheckCircle className="icon" />
+                                <span>Date range saved successfully!</span>
+                            </div>
+                        )}
+
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center gap-3">
                                 <Calendar className="icon-xl text-blue-600" />
