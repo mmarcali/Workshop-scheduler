@@ -242,6 +242,27 @@
                 window.open(GOOGLE_SCRIPT_URL, '_blank');
                 console.log('You should see JSON data like: {"config":{"description":"","timeSlots":[]},"participants":{}}');
                 console.log('If you see an error page instead, there\'s a problem with your Apps Script deployment.');
+            },
+
+            testParticipantSave: async () => {
+                console.log('=== TESTING PARTICIPANT SAVE ===');
+                
+                const testParticipantData = {
+                    type: 'participant',
+                    name: 'Test User Debug',
+                    selectedSlots: [123456789, 987654321]
+                };
+                
+                console.log('Test participant data:', testParticipantData);
+                
+                try {
+                    const result = await saveToSheets(testParticipantData);
+                    console.log('✅ Participant save test PASSED:', result);
+                    console.log('Check your Google Sheet "Responses" tab for the test entry.');
+                } catch (error) {
+                    console.error('❌ Participant save test FAILED:', error);
+                    console.log('This is likely the same error your participants are seeing.');
+                }
             }
         };
 
@@ -249,6 +270,7 @@
         console.log('• debugWorkshopScheduler.testConnection() - Test connection to Google Sheets');
         console.log('• debugWorkshopScheduler.checkConfig() - Show current configuration');
         console.log('• debugWorkshopScheduler.testDirectAccess() - Open Apps Script URL directly');
+        console.log('• debugWorkshopScheduler.testParticipantSave() - Test participant data saving');
 
         const WorkshopScheduler = () => {
             const [currentView, setCurrentView] = useState('admin');
@@ -346,11 +368,22 @@
                 if (participantName && participants[participantName]?.length > 0) {
                     setSaving(true);
                     try {
-                        await saveToSheets({
+                        console.log('=== SAVING PARTICIPANT RESPONSE ===');
+                        console.log('Participant name:', participantName);
+                        console.log('Selected slots:', participants[participantName]);
+                        console.log('Selected slots length:', participants[participantName].length);
+                        
+                        const participantData = {
                             type: 'participant',
                             name: participantName,
                             selectedSlots: participants[participantName]
-                        });
+                        };
+                        
+                        console.log('Data to save:', participantData);
+                        
+                        await saveToSheets(participantData);
+                        
+                        console.log('✅ Participant response saved successfully');
                         
                         // Load fresh results data before switching to thank you page
                         setLoadingResults(true);
@@ -360,6 +393,7 @@
                                 timeSlots: data.config.timeSlots || [],
                                 participants: data.participants || {}
                             });
+                            console.log('✅ Results data loaded for thank you page');
                         } catch (error) {
                             console.error('Error loading results for thank you page:', error);
                         } finally {
@@ -368,11 +402,16 @@
                         
                         switchToView('thank-you');
                     } catch (error) {
-                        alert('Error saving your response. Please try again.');
-                        console.error('Save error:', error);
+                        console.error('❌ Save error details:', error);
+                        alert(`Error saving your response: ${error.message}\n\nPlease check the browser console for details and try again.`);
                     } finally {
                         setSaving(false);
                     }
+                } else {
+                    console.log('❌ Cannot save - missing data:');
+                    console.log('Participant name:', participantName);
+                    console.log('Selected slots:', participants[participantName]);
+                    alert('Please enter your name and select at least one time slot before confirming.');
                 }
             };
 
@@ -728,7 +767,8 @@
                             <div className="mt-3 p-3 bg-yellow-100 border border-yellow-300 rounded-lg">
                                 <p className="text-sm text-yellow-800">
                                     <strong>🔧 Debug Tools:</strong> If you get errors, open browser console (F12) and run:<br/>
-                                    <code className="bg-yellow-200 px-1 rounded">debugWorkshopScheduler.testConnection()</code>
+                                    <code className="bg-yellow-200 px-1 rounded">debugWorkshopScheduler.testConnection()</code><br/>
+                                    <code className="bg-yellow-200 px-1 rounded">debugWorkshopScheduler.testParticipantSave()</code>
                                 </p>
                             </div>
                         </div>
