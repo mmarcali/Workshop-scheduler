@@ -379,7 +379,7 @@
         };
 
         const WorkshopScheduler = () => {
-            const [currentView, setCurrentView] = useState('participant');
+            const [currentView, setCurrentView] = useState(''); // Start empty, let hash determine view
             const [participantName, setParticipantName] = useState('');
             const [dateRanges, setDateRanges] = useState([]);
             const [participants, setParticipants] = useState({});
@@ -419,46 +419,50 @@
             useEffect(() => {
                 const checkHash = () => {
                     const hash = window.location.hash.substring(1);
+                    console.log('Navigation: Hash changed to:', hash);
+                    
                     if (hash === 'participant') {
+                        console.log('Navigation: Setting view to participant');
                         setCurrentView('participant');
                     } else if (hash === 'thank-you') {
+                        console.log('Navigation: Setting view to thank-you');
                         setCurrentView('thank-you');
-                    } else if (hash === '' && isAdminAuthenticated) {
+                    } else if (hash === 'admin') {
+                        console.log('Navigation: Setting view to admin');
                         setCurrentView('admin');
                     } else {
-                        // Default to participant view if not authenticated as admin
+                        // Default to participant view
+                        console.log('Navigation: No hash or empty hash, defaulting to participant');
                         setCurrentView('participant');
                         window.location.hash = 'participant';
                     }
                 };
                 
+                // Run on component mount
                 checkHash();
+                
+                // Listen for hash changes
                 window.addEventListener('hashchange', checkHash);
                 return () => window.removeEventListener('hashchange', checkHash);
-            }, [isAdminAuthenticated]);
+            }, []); // Remove isAdminAuthenticated dependency
 
             const switchToView = (view) => {
-                if (view === 'admin' && !isAdminAuthenticated) {
-                    // Don't switch to admin view without authentication
-                    return;
-                }
-                
+                console.log('Navigation: switchToView called with:', view);
+                // Only update the hash - let the hash change listener update the state
                 if (view === 'participant') {
                     window.location.hash = 'participant';
                 } else if (view === 'thank-you') {
                     window.location.hash = 'thank-you';
-                } else {
-                    window.location.hash = '';
+                } else if (view === 'admin') {
+                    window.location.hash = 'admin';
                 }
-                setCurrentView(view);
             };
 
             const handleAdminLogin = () => {
                 if (adminPassword === ADMIN_PASSWORD) {
                     setIsAdminAuthenticated(true);
                     setAdminPassword('');
-                    setCurrentView('admin');
-                    window.location.hash = '';
+                    // Stay on admin view but now authenticated
                 } else {
                     alert('Incorrect password. Access denied.');
                     setAdminPassword('');
@@ -467,8 +471,7 @@
 
             const handleAdminLogout = () => {
                 setIsAdminAuthenticated(false);
-                setCurrentView('participant');
-                window.location.hash = 'participant';
+                switchToView('participant');
             };
 
             const copyParticipantLink = () => {
@@ -699,6 +702,11 @@
                         </div>
                     </div>
                 );
+            }
+
+            // Don't render anything until currentView is determined
+            if (!currentView) {
+                return null;
             }
 
             if (currentView === 'thank-you') {
@@ -957,14 +965,7 @@
                             </button>
                             
                             <button
-                                onClick={() => {
-                                    if (isAdminAuthenticated) {
-                                        switchToView('admin');
-                                    } else {
-                                        setCurrentView('admin');
-                                        window.location.hash = '';
-                                    }
-                                }}
+                                onClick={() => switchToView('admin')}
                                 className="block w-full max-w-sm mx-auto px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
                             >
                                 View Full Results (Admin)
@@ -1241,14 +1242,7 @@
                             <h1 className="text-3xl font-bold text-gray-900">Select Your Availability</h1>
                         </div>
                         <button
-                            onClick={() => {
-                                if (isAdminAuthenticated) {
-                                    switchToView('admin');
-                                } else {
-                                    setCurrentView('admin');
-                                    window.location.hash = '';
-                                }
-                            }}
+                            onClick={() => switchToView('admin')}
                             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                         >
                             <Settings className="icon" />
