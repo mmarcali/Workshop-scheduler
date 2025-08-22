@@ -165,7 +165,29 @@
                 
                 const result = await response.json();
                 console.log('Load success result:', result);
-                return result;
+                
+                // Handle both old and new data formats for backward compatibility
+                const config = result.config || {};
+                let dateRanges = config.dateRanges || [];
+                
+                // If we have old timeSlots format, convert to new dateRanges format
+                if (config.timeSlots && config.timeSlots.length > 0) {
+                    console.log('Converting old timeSlots format to new dateRanges format...');
+                    dateRanges = config.timeSlots.map(slot => ({
+                        id: slot.id,
+                        startDate: slot.dateFrom,
+                        endDate: slot.dateTo,
+                        description: slot.description
+                    }));
+                }
+                
+                return {
+                    config: {
+                        description: config.description || '',
+                        dateRanges: dateRanges
+                    },
+                    participants: result.participants || {}
+                };
             } catch (error) {
                 console.error('Error loading from Google Sheets:', error);
                 alert(`Error loading data: ${error.message}. Using local data only.`);
@@ -513,11 +535,20 @@
                     setSaving(true);
                     
                     try {
+                        // Convert selected dates back to the format expected by Google Apps Script
+                        const selectedDates = participants[participantName];
+                        
                         const participantData = {
                             type: 'participant',
                             name: participantName,
-                            selectedDates: participants[participantName]
+                            selectedSlots: selectedDates, // Keep the original field name
+                            selectedDates: selectedDates  // Also send as selectedDates for backward compatibility
                         };
+                        
+                        console.log('=== SAVING PARTICIPANT RESPONSE ===');
+                        console.log('Participant name:', participantName);
+                        console.log('Selected dates:', selectedDates);
+                        console.log('Data being sent:', participantData);
                         
                         await saveToSheets(participantData);
                         
@@ -551,6 +582,35 @@
                 ).length;
             };
 
+            const getDateParticipants = (dateKey, participantsData = participants) => {
+                return Object.keys(participantsData).filter(name => 
+                    participantsData[name].includes(dateKey)
+                );
+            };
+
+            const getRangeParticipants = (range, participantsData = participants) => {
+                // Get all dates in the range
+                const rangeDates = [];
+                const start = new Date(range.startDate);
+                const end = new Date(range.endDate);
+                
+                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                    rangeDates.push(formatDateKey(d));
+                }
+                
+                // Find participants who selected ALL dates in this range
+                const participantsWithFullRange = Object.keys(participantsData).filter(name => {
+                    const userDates = participantsData[name] || [];
+                    return rangeDates.every(dateKey => userDates.includes(dateKey));
+                });
+                
+                return {
+                    count: participantsWithFullRange.length,
+                    names: participantsWithFullRange,
+                    rangeDates: rangeDates
+                };
+            };
+
             const getAllSelectedDates = (rangesData = dateRanges, participantsData = participants) => {
                 const allDates = new Set();
                 rangesData.forEach(range => {
@@ -565,6 +625,7 @@
                 return Array.from(allDates).sort().map(dateKey => ({
                     dateKey,
                     count: getDateParticipantCount(dateKey, participantsData),
+                    names: getDateParticipants(dateKey, participantsData),
                     displayDate: new Date(dateKey).toLocaleDateString('en-US', { 
                         weekday: 'long', 
                         year: 'numeric', 
@@ -610,9 +671,19 @@
 
             if (currentView === 'thank-you') {
                 const totalResultsParticipants = Object.keys(resultsData.participants).length;
-                const sortedResultsDates = getAllSelectedDates(resultsData.dateRanges, resultsData.participants)
-                    .filter(date => date.count > 0)
-                    .sort((a, b) => b.count - a.count);
+                
+                // Calculate results for each date range
+                const rangeResults = (resultsData.dateRanges || []).map(range => {
+                    const rangeData = getRangeParticipants(range, resultsData.participants);
+                    return {
+                        ...range,
+                        count: rangeData.count,
+                        participants: rangeData.names,
+                        rangeDates: rangeData.rangeDates
+                    };
+                }).sort((a, b) => b.count - a.count);
+
+                const maxResultsAvailability = Math.max(...rangeResults.map(range => range.count), 0);
 
                 return (
                     <div className="max-w-6xl mx-auto p-6 bg-white min-h-screen">
@@ -630,27 +701,31 @@
                             </div>
                         </div>
 
-                        {totalResultsParticipants > 0 && sortedResultsDates.length > 0 ? (
+                        {totalResultsParticipants > 0 && rangeResults.length > 0 ? (
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                 {/* Results Analysis - Left/Center */}
                                 <div className="lg:col-span-2">
                                     <div className="bg-white border border-gray-200 rounded-lg p-6">
                                         <div className="flex items-center gap-2 mb-4">
                                             <Users className="icon-lg text-blue-600" />
-                                            <h3 className="text-xl font-semibold">Current Results</h3>
+                                            <h3 className="text-xl font-semibold">Current Results by Range</h3>
                                             <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm font-medium">
                                                 {totalResultsParticipants} vote{totalResultsParticipants !== 1 ? 's' : ''} so far
                                             </span>
                                         </div>
                                         
+                                        <div className="text-sm text-gray-600 mb-4">
+                                            Showing participants available for the ENTIRE date range.
+                                        </div>
+                                        
                                         <div className="space-y-4 max-h-96 overflow-y-auto">
-                                            {sortedResultsDates.map((date, index) => {
-                                                const percentage = totalResultsParticipants > 0 ? (date.count / totalResultsParticipants) * 100 : 0;
-                                                const isWinner = index === 0 && date.count > 0;
+                                            {rangeResults.map((range, index) => {
+                                                const percentage = totalResultsParticipants > 0 ? (range.count / totalResultsParticipants) * 100 : 0;
+                                                const isWinner = range.count === maxResultsAvailability && range.count > 0;
                                                 const rank = index + 1;
                                                 
                                                 return (
-                                                    <div key={date.dateKey} className={`p-4 rounded-lg border-2 ${isWinner ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'}`}>
+                                                    <div key={range.id} className={`p-4 rounded-lg border-2 ${isWinner ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'}`}>
                                                         <div className="flex items-center justify-between mb-2">
                                                             <div className="flex items-center gap-3">
                                                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white ${
@@ -663,19 +738,22 @@
                                                                 {isWinner && <CheckCircle className="icon-lg text-green-600" />}
                                                                 <div>
                                                                     <div className={`font-semibold text-lg ${isWinner ? 'text-green-700' : 'text-gray-900'}`}>
-                                                                        {date.displayDate}
+                                                                        {formatRangeDisplay(range)}
+                                                                    </div>
+                                                                    <div className="text-sm text-gray-500">
+                                                                        {range.rangeDates?.length || 1} day{(range.rangeDates?.length || 1) !== 1 ? 's' : ''}
                                                                     </div>
                                                                 </div>
                                                             </div>
                                                             <div className="text-right">
                                                                 <div className={`text-2xl font-bold ${isWinner ? 'text-green-600' : 'text-gray-900'}`}>
-                                                                    {date.count}/{totalResultsParticipants}
+                                                                    {range.count}/{totalResultsParticipants}
                                                                 </div>
                                                                 <div className="text-sm text-gray-500">{Math.round(percentage)}% available</div>
                                                             </div>
                                                         </div>
                                                         
-                                                        <div className="w-full bg-gray-200 rounded-full h-3">
+                                                        <div className="w-full bg-gray-200 rounded-full h-3 mb-3">
                                                             <div 
                                                                 className={`h-3 rounded-full ${
                                                                     rank === 1 ? 'bg-yellow-500' : 
@@ -685,22 +763,43 @@
                                                                 style={{ width: `${percentage}%` }}
                                                             ></div>
                                                         </div>
+                                                        
+                                                        {range.participants && range.participants.length > 0 && (
+                                                            <div>
+                                                                <div className="text-sm font-medium text-gray-700 mb-2">
+                                                                    Available for entire range:
+                                                                </div>
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    {range.participants.map((name) => (
+                                                                        <span key={name} className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
+                                                                            {name}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        
+                                                        {range.count === 0 && (
+                                                            <div className="text-sm text-gray-500 italic">
+                                                                No participants available for the entire range yet
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 );
                                             })}
                                         </div>
 
-                                        {sortedResultsDates.length > 0 && (
+                                        {maxResultsAvailability > 0 && (
                                             <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
                                                 <h4 className="font-semibold text-green-800 mb-2">
-                                                    🏆 Current Winner{sortedResultsDates.filter((date, index) => index === 0 && date.count === sortedResultsDates[0]?.count).length > 1 ? 's' : ''}:
+                                                    🏆 Current Winner{rangeResults.filter(range => range.count === maxResultsAvailability).length > 1 ? 's' : ''}:
                                                 </h4>
                                                 <div className="space-y-1">
-                                                    {sortedResultsDates
-                                                        .filter(date => date.count === sortedResultsDates[0]?.count)
-                                                        .map(date => (
-                                                            <div key={date.dateKey} className="text-green-700 font-medium">
-                                                                {date.displayDate}
+                                                    {rangeResults
+                                                        .filter(range => range.count === maxResultsAvailability)
+                                                        .map(range => (
+                                                            <div key={range.id} className="text-green-700 font-medium">
+                                                                {formatRangeDisplay(range)} ({range.count} participant{range.count !== 1 ? 's' : ''})
                                                             </div>
                                                         ))}
                                                 </div>
@@ -794,7 +893,19 @@
 
             if (currentView === 'admin') {
                 const totalParticipants = Object.keys(participants).length;
-                const sortedDates = getAllSelectedDates().sort((a, b) => b.count - a.count);
+                
+                // Calculate results for each date range
+                const rangeResults = dateRanges.map(range => {
+                    const rangeData = getRangeParticipants(range, participants);
+                    return {
+                        ...range,
+                        count: rangeData.count,
+                        participants: rangeData.names,
+                        rangeDates: rangeData.rangeDates
+                    };
+                }).sort((a, b) => b.count - a.count);
+
+                const maxRangeAvailability = Math.max(...rangeResults.map(range => range.count), 0);
 
                 return (
                     <div className="max-w-6xl mx-auto p-6 bg-white">
@@ -812,6 +923,12 @@
                                 <h1 className="text-3xl font-bold text-gray-900">Workshop Scheduler</h1>
                             </div>
                             <div className="flex gap-2">
+                                <button
+                                    onClick={() => window.open('https://docs.google.com/spreadsheets/d/1qRAhPCd39aHXP6Ju25_JQNHWP9QBPyn8zB80x2GDk40/edit?gid=343624849#gid=343624849', '_blank')}
+                                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                                >
+                                    📊 Open Google Sheet
+                                </button>
                                 <button
                                     onClick={copyParticipantLink}
                                     className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
@@ -891,40 +1008,88 @@
                                     </div>
                                 )}
 
-                                {totalParticipants > 0 && sortedDates.length > 0 && (
+                                {totalParticipants > 0 && rangeResults.length > 0 && (
                                     <div className="bg-white border border-gray-200 rounded-lg p-6">
                                         <div className="flex items-center gap-2 mb-4">
                                             <Users className="icon-lg text-green-600" />
-                                            <h3 className="text-lg font-semibold">Results ({totalParticipants} participants)</h3>
+                                            <h3 className="text-lg font-semibold">Results by Range ({totalParticipants} participants)</h3>
                                         </div>
                                         
-                                        <div className="space-y-3 max-h-96 overflow-y-auto">
-                                            {sortedDates.filter(date => date.count > 0).map((date, index) => {
-                                                const percentage = totalParticipants > 0 ? (date.count / totalParticipants) * 100 : 0;
-                                                const isWinner = index === 0 && date.count > 0;
+                                        <div className="text-sm text-gray-600 mb-4">
+                                            Showing participants available for the ENTIRE date range.
+                                        </div>
+                                        
+                                        <div className="space-y-4 max-h-96 overflow-y-auto">
+                                            {rangeResults.map((range, index) => {
+                                                const percentage = totalParticipants > 0 ? (range.count / totalParticipants) * 100 : 0;
+                                                const isWinner = range.count === maxRangeAvailability && range.count > 0;
                                                 
                                                 return (
-                                                    <div key={date.dateKey} className={`p-3 rounded-lg border ${isWinner ? 'border-green-500 bg-green-50' : 'border-gray-200'}`}>
-                                                        <div className="flex items-center justify-between mb-2">
+                                                    <div key={range.id} className={`p-4 rounded-lg border ${isWinner ? 'border-green-500 bg-green-50' : 'border-gray-200'}`}>
+                                                        <div className="flex items-start justify-between mb-2">
                                                             <div className="flex items-center gap-2">
-                                                                {isWinner && <CheckCircle className="icon text-green-600" />}
-                                                                <div className="font-medium">{date.displayDate}</div>
+                                                                {isWinner && <CheckCircle className="icon-lg text-green-600" />}
+                                                                <div>
+                                                                    <div className="font-semibold text-lg">{formatRangeDisplay(range)}</div>
+                                                                    <div className="text-sm text-gray-500">
+                                                                        {range.rangeDates.length} day{range.rangeDates.length !== 1 ? 's' : ''}
+                                                                    </div>
+                                                                </div>
                                                             </div>
                                                             <div className="text-right">
-                                                                <div className="font-bold">{date.count}/{totalParticipants}</div>
-                                                                <div className="text-sm text-gray-500">{Math.round(percentage)}%</div>
+                                                                <div className={`text-2xl font-bold ${isWinner ? 'text-green-600' : 'text-gray-900'}`}>
+                                                                    {range.count}/{totalParticipants}
+                                                                </div>
+                                                                <div className="text-sm text-gray-500">{Math.round(percentage)}% available</div>
                                                             </div>
                                                         </div>
-                                                        <div className="w-full bg-gray-200 rounded-full h-2">
+                                                        
+                                                        <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
                                                             <div 
                                                                 className={`h-2 rounded-full ${isWinner ? 'bg-green-500' : 'bg-blue-500'}`}
                                                                 style={{ width: `${percentage}%` }}
                                                             ></div>
                                                         </div>
+                                                        
+                                                        {range.participants.length > 0 && (
+                                                            <div>
+                                                                <div className="text-sm font-medium text-gray-700 mb-2">
+                                                                    Available for entire range:
+                                                                </div>
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    {range.participants.map((name) => (
+                                                                        <span key={name} className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
+                                                                            {name}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        
+                                                        {range.count === 0 && (
+                                                            <div className="text-sm text-gray-500 italic">
+                                                                No participants available for the entire range
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 );
                                             })}
                                         </div>
+
+                                        {maxRangeAvailability > 0 && (
+                                            <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                                                <h4 className="font-semibold text-green-800 mb-2">🏆 Winner Range{rangeResults.filter(range => range.count === maxRangeAvailability).length > 1 ? 's' : ''}:</h4>
+                                                <div className="space-y-1">
+                                                    {rangeResults
+                                                        .filter(range => range.count === maxRangeAvailability)
+                                                        .map(range => (
+                                                            <div key={range.id} className="text-green-700 font-medium">
+                                                                {formatRangeDisplay(range)} ({range.count} participant{range.count !== 1 ? 's' : ''})
+                                                            </div>
+                                                        ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
