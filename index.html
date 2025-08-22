@@ -260,9 +260,24 @@
             participants,
             selectionStart,
             highlightedRange,
-            participantName
+            participantName,
+            initialMonth = null
         }) => {
-            const [displayMonth, setDisplayMonth] = useState(new Date());
+            const getInitialDisplayMonth = () => {
+                if (initialMonth) {
+                    return new Date(initialMonth);
+                }
+                return new Date();
+            };
+            
+            const [displayMonth, setDisplayMonth] = useState(getInitialDisplayMonth());
+            
+            // Update display month if initialMonth changes
+            useEffect(() => {
+                if (initialMonth) {
+                    setDisplayMonth(new Date(initialMonth));
+                }
+            }, [initialMonth]);
             
             const weeks = generateCalendarWeeks(displayMonth.getFullYear(), displayMonth.getMonth());
             
@@ -1347,6 +1362,35 @@
             }
 
             // Participant View
+            const getOptimalStartingMonth = () => {
+                if (!dateRanges || dateRanges.length === 0) {
+                    return null; // Use current month
+                }
+                
+                // Find the earliest start date among all ranges
+                const earliestDate = dateRanges.reduce((earliest, range) => {
+                    const rangeStart = new Date(range.startDate);
+                    return !earliest || rangeStart < earliest ? rangeStart : earliest;
+                }, null);
+                
+                if (!earliestDate) {
+                    return null; // Use current month
+                }
+                
+                const currentMonth = new Date();
+                currentMonth.setDate(1); // Set to first day for proper comparison
+                
+                const earliestMonth = new Date(earliestDate);
+                earliestMonth.setDate(1); // Set to first day for proper comparison
+                
+                // If earliest date is in a future month, use that month
+                if (earliestMonth > currentMonth) {
+                    return earliestMonth;
+                }
+                
+                return null; // Use current month
+            };
+            
             return (
                 <div className="max-w-6xl mx-auto p-6 bg-white">
                     <div className="flex items-center justify-between mb-6">
@@ -1391,6 +1435,7 @@
                                 isAdmin={false}
                                 participants={participants}
                                 participantName={participantName}
+                                initialMonth={getOptimalStartingMonth()}
                             />
                         </div>
 
