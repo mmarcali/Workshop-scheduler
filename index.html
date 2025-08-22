@@ -272,6 +272,28 @@
                 setDisplayMonth(newMonth);
             };
 
+            const hasAvailableDatesInMonth = (year, month) => {
+                if (!dateRanges || dateRanges.length === 0) return false;
+                
+                const monthStart = new Date(year, month, 1);
+                const monthEnd = new Date(year, month + 1, 0);
+                const monthStartKey = formatDateKey(monthStart);
+                const monthEndKey = formatDateKey(monthEnd);
+                
+                return dateRanges.some(range => {
+                    // Check if range overlaps with this month
+                    return range.startDate <= monthEndKey && range.endDate >= monthStartKey;
+                });
+            };
+
+            const prevMonth = new Date(displayMonth);
+            prevMonth.setMonth(prevMonth.getMonth() - 1);
+            const nextMonth = new Date(displayMonth);
+            nextMonth.setMonth(nextMonth.getMonth() + 1);
+            
+            const hasPrevMonthDates = hasAvailableDatesInMonth(prevMonth.getFullYear(), prevMonth.getMonth());
+            const hasNextMonthDates = hasAvailableDatesInMonth(nextMonth.getFullYear(), nextMonth.getMonth());
+
             const getDateParticipantCount = (date) => {
                 const dateKey = formatDateKey(date);
                 // Only count votes for dates that are in currently active ranges
@@ -346,9 +368,13 @@
                     <div className="flex items-center justify-between mb-4">
                         <button
                             onClick={() => navigateMonth(-1)}
-                            className="p-2 hover:bg-gray-100 rounded"
+                            className={`p-2 hover:bg-gray-100 rounded relative ${hasPrevMonthDates ? 'ring-2 ring-blue-300' : ''}`}
+                            title={hasPrevMonthDates ? 'Previous month has available dates' : 'Previous month'}
                         >
                             <ChevronLeft className="icon" />
+                            {hasPrevMonthDates && (
+                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full"></div>
+                            )}
                         </button>
                         
                         <h3 className="text-lg font-semibold">
@@ -357,9 +383,13 @@
                         
                         <button
                             onClick={() => navigateMonth(1)}
-                            className="p-2 hover:bg-gray-100 rounded"
+                            className={`p-2 hover:bg-gray-100 rounded relative ${hasNextMonthDates ? 'ring-2 ring-blue-300' : ''}`}
+                            title={hasNextMonthDates ? 'Next month has available dates' : 'Next month'}
                         >
                             <ChevronRight className="icon" />
+                            {hasNextMonthDates && (
+                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full"></div>
+                            )}
                         </button>
                     </div>
                     
@@ -859,7 +889,7 @@
                                         </div>
                                         
                                         <div className="space-y-3">
-                                            {rangeResults.map((range, index) => {
+                                            {rangeResults.slice(0, 4).map((range, index) => {
                                                 const percentage = totalResultsParticipants > 0 ? (range.count / totalResultsParticipants) * 100 : 0;
                                                 const isWinner = range.count === maxResultsAvailability && range.count > 0;
                                                 const rank = index + 1;
@@ -908,6 +938,14 @@
                                             })}
                                         </div>
 
+                                        {rangeResults.length > 4 && (
+                                            <div className="mt-3 text-center">
+                                                <p className="text-sm text-gray-500">
+                                                    Showing top 4 of {rangeResults.length} options
+                                                </p>
+                                            </div>
+                                        )}
+
                                         {maxResultsAvailability > 0 && (
                                             <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
                                                 <h4 className="font-semibold text-green-800 mb-1">
@@ -916,11 +954,17 @@
                                                 <div className="space-y-1">
                                                     {rangeResults
                                                         .filter(range => range.count === maxResultsAvailability)
+                                                        .slice(0, 3)
                                                         .map(range => (
                                                             <div key={range.id} className="text-green-700 font-medium text-sm">
                                                                 {formatRangeDisplay(range)} ({range.count} participant{range.count !== 1 ? 's' : ''})
                                                             </div>
                                                         ))}
+                                                    {rangeResults.filter(range => range.count === maxResultsAvailability).length > 3 && (
+                                                        <div className="text-green-600 text-xs">
+                                                            +{rangeResults.filter(range => range.count === maxResultsAvailability).length - 3} more tied
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         )}
